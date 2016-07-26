@@ -1,0 +1,68 @@
+############################################################################
+#
+# Copyright (c) 2011 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+
+cd WORKING_*
+cd META-INF/com/google/android
+
+if [ ! -e update-script ]
+then
+  echo "Error: update-script not found"
+  cd ../../../../..
+  exit 0
+fi
+
+grep_data_local=`grep -c "0771 DATA:local" update-script`
+
+if [ "$grep_data_local" == "1" ]
+then
+  echo "update-script already has /data/local content"
+
+else
+  echo "Updating update-script with /data/local entries"
+
+  if [ `grep -c "format .*DATA:" update-script` == 0 ]
+  then
+    if [ `grep -c "format .*SYSTEM:" update-script` == 0 ]
+    then
+      sed -i -e '1i delete DATA:local\n' update-script
+    else
+      sed -i -e 's/format\(.*\)SYSTEM:[ ]*[\n]*/format\1SYSTEM:\ndelete DATA:local\n/' update-script
+    fi      
+  else 
+    #
+    # The 'delete DATA:local' command is redundant because you're formatting the DATA partition,
+    # but we'll do that in case the user decides later to remove the format command. 
+    #
+    sed -i -e 's/format\(.*\)DATA:[ ]*[\n]*/format\1DATA:\ndelete DATA:local\n/' update-script
+  fi
+
+  if [ `grep -c "copy_dir PACKAGE:data DATA:" update-script` == 0 ]
+  then
+    sed -i -e 's/delete DATA:local[ ]*[\n]*/delete DATA:local\ncopy_dir PACKAGE:data DATA:\n/' update-script
+  fi 
+
+  sed -i -e 's/copy_dir PACKAGE:data DATA:[ ]*[\n]*/copy_dir PACKAGE:data DATA:\nset_perm 2000 2000 0771 DATA:local\n/' update-script
+
+  grep_data_local=`grep -c "0771 DATA:local" update-script`
+
+  if [ $grep_data_local == 0 ]
+  then
+    echo "Error: Unable to update update-script with /data/local"
+  else
+    echo
+    echo "You can now put your custom bootanimation.zip under /data/local."
+    echo "If it is missing then the ROM will use the default boot animation."
+  fi
+fi
+
+cd ../../../../..
+
+scripts/fix_update_script_blanks

@@ -1,0 +1,216 @@
+############################################################################
+#
+# Copyright (c) 2013 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+#
+# This script has two optional arguments:
+#
+# $1 = "kernel_only" - dont't modify any files after extraction 
+#    = "name_given" - if this is used, then $2 is mandatory
+# $2 = ROM name under original_update (specify only if $1 = "name_given")
+#
+
+
+if [ "$1" == "name_given" ]
+then
+
+  file_chosen=$2
+
+  if [ "$file_chosen" == "" ]
+  then
+    echo "Error: ROM name not specified!"
+    cd ..
+    exit 0
+  fi
+
+  if [ ! -e original_update/$file_chosen ]
+  then
+    echo "Error: original_update/$file_chosen not found!"
+    exit 0
+  fi
+  
+else
+
+  while [ 1==1 ]
+  do
+
+    echo
+    echo "Please wait ..."
+    echo
+
+    #
+    # This script will search original_update for available ROMs
+    #
+    grep_cmd=`scripts/grep_roms`
+
+    if [ "$grep_cmd" == "" ]
+    then
+      echo "Error: No ROMs found under original_update folder!"
+      exit 0
+    fi
+
+    count=0
+    rm -f temp.list
+
+    echo >> temp.list
+    echo "Available ROMs:" >> temp.list
+    echo >> temp.list
+
+    for filename in $grep_cmd 
+    do
+      count=$(($count+1))
+
+      filename=`echo $filename | sed 's/temp_space/ /g'`
+
+      # Store file names in an array
+      file_array[$count]=$filename
+
+      if [ "$filename" == "system.img" ]
+      then
+        filename="system.img and boot.img"
+
+      elif [ "$filename" == "factoryfs.rfs" ]
+      then
+        filename="factoryfs.rfs, cache.rfs and zImage"
+
+      elif [ "$filename" == "system.rfs" ]
+      then
+        filename="system.rfs, csc.rfs and boot.img"
+
+      elif [ "$filename" == "system.img.ext4" ]
+      then
+        filename="system.img.ext4, tomb.img.ext4, cache.img.ext4 and boot.img"
+
+      elif [ "$filename" == "system.ext4.tar" ]
+      then
+        filename="system.ext4.tar and boot.img"
+
+      elif [ "$filename" == "factoryfs.img" ]
+      then
+        filename="factoryfs.img, hidden.img, cache.img and zImage"
+
+      elif [ "$filename" == "PDA.tar.md5" ]
+      then
+        filename="PDA.tar.md5, CSC.tar.md5 and PHONE.tar.md5"
+
+      elif [ "$filename" == "PDA.tar" ]
+      then
+        filename="PDA.tar, CSC.tar and PHONE.tar"
+      fi
+
+      echo "  ($count) $filename" >> temp.list
+    done
+
+    more temp.list
+    rm -f temp.list
+
+    echo
+    echo -n "Enter selection number (default=1, cancel=0, r=refresh): "
+
+    read enterNumber
+    echo
+
+    if [ "$enterNumber" == "0" ]
+    then
+      exit 0
+    fi
+
+    if [ "$enterNumber" == "" ]
+    then
+      enterNumber=1
+    fi
+
+    if [ "$enterNumber" == "r" ]
+    then
+      continue
+    fi
+
+    if [ "`echo $enterNumber | sed 's/[0-9]*//'`" == "" ] || [ "enterNumber"=="1" ]
+    then
+      file_chosen=${file_array[$enterNumber]}
+
+      if [ "$file_chosen" == "" ]
+      then
+        echo "Error: Invalid selection"
+        continue
+      else
+        break
+      fi
+    else
+      echo "Error: Invalid selection"
+      continue
+    fi
+
+  done
+
+fi
+
+
+if [ ! -d "original_update/$file_chosen" ]
+then
+
+  if [ "$file_chosen" == "system.img" ]
+  then
+    scripts/img_files_to_working_folder create_working $1
+    exit $?
+
+  elif [ "$file_chosen" == "factoryfs.rfs" ] || [ "$file_chosen" == "system.rfs" ]
+  then
+    scripts/rfs_files_to_working_folder create_working $1
+    exit $?
+
+  elif [ "$file_chosen" == "PDA.tar" ]
+  then
+    scripts/sgs_tar_files_to_working_folder create_working $1
+    exit $?
+
+  elif [ "$file_chosen" == "PDA.tar.md5" ]
+  then
+    scripts/sgs_tarmd5_files_to_working_folder create_working $1
+    exit $?
+
+  elif [ "$file_chosen" == "factoryfs.img" ]
+  then
+    scripts/simg_files_to_working_folder create_working $1
+    exit $?
+  
+  elif [ "$file_chosen" == "system.img.ext4" ]
+  then
+    scripts/simg_ext4_files_to_working_folder create_working $1
+    exit $?
+
+  elif [ "$file_chosen" == "system.ext4.tar" ]
+  then
+    scripts/sext4_tar_files_to_working_folder create_working $1
+    exit $?
+
+  elif [ "`echo $file_chosen | grep -i \\.zip$`" != "" ]
+  then
+    scripts/zip_file_to_working_folder "$file_chosen" $1
+    exit $?
+
+  elif [ "`echo $file_chosen | grep -i \\.tar$`" != "" ]
+  then
+    scripts/tar_file_to_working_folder "$file_chosen" $1
+    exit $?
+
+  elif [ "`echo $file_chosen | grep -i \\.app$`" != "" ]
+  then
+    scripts/app_file_to_working_folder "$file_chosen" $1
+    exit $?
+  fi
+
+else
+  if [ "`echo $file_chosen | grep -m 1 \"^WORKING_\"`" != "" ]
+  then
+    scripts/wkg_to_working_folder "$file_chosen" $1
+    exit $?
+  fi 
+fi
+

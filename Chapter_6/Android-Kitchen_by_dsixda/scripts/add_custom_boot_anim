@@ -1,0 +1,65 @@
+############################################################################
+#
+# Copyright (c) 2011 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+
+clear
+
+echo
+echo "----------------------------------------------------------------"
+echo  
+echo "This option allows you to use a custom boot animation in place"
+echo "of the default one."
+echo 
+echo "After enabling this option, your boot animation should be copied"
+echo "under the /data/local folder as 'bootanimation.zip'."
+echo
+echo "----------------------------------------------------------------"
+echo
+
+echo -n "Proceed (y/n)? (default: y): "
+read do_install
+
+if [ "$do_install" == "n" ]
+then
+  exit 0
+fi
+
+echo 
+
+if [ -d WORKING_* ]
+then
+  echo
+  echo Working folder found
+  cd WORKING_*
+else
+  echo
+  echo Working folder not found, you will need to create one!
+  exit 0
+fi
+
+echo
+
+if [ -d data/local ]
+then
+  echo /data/local already exists
+else
+  echo Creating /data/local
+  mkdir -p data/local
+fi
+
+if [ ! -e data/local/placeholder ]
+then
+  touch data/local/placeholder
+fi
+
+cd ..
+scripts/add_data_local_to_update_script
+echo
+

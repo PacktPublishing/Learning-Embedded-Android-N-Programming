@@ -1,0 +1,150 @@
+############################################################################
+#
+# Copyright (c) 2012 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+
+clear
+
+while :
+do
+
+  clear
+
+  echo
+  echo "Boot image tools"
+  echo "----------------"
+  echo
+  echo "Enter a choice:"
+  echo 
+
+  if [ -d WORKING_* ]
+  then
+
+    if [ -d BOOT-EXTRACTED ]
+    then
+      extracted=true
+    else
+      extracted=false
+    fi
+
+    cd WORKING_*
+    if [ -e boot.img ]
+    then
+      boot_img=true
+    else
+      boot_img=false
+    fi
+
+    if [ -d boot ]
+    then
+      boot_folder=true
+    else
+      boot_folder=false
+    fi
+
+    cd ..
+
+
+    if [ "$boot_img" == "true" ]
+    then
+      echo "  s = Show boot.img information"
+    fi
+
+    if [ "$extracted" == "true" ] 
+    then
+      echo "  b = Build boot.img from BOOT-EXTRACTED folder (for working folder)"
+      echo "  n = Build NAND's boot folder from BOOT-EXTRACTED (for working folder)"
+      echo "  r = Remove BOOT-EXTRACTED folder (don't build anything)"
+    else
+      
+      if [ "$boot_img" == "true" ]
+      then
+        echo "  w = Extract kernel+ramdisk from boot.img"
+        echo "  c = Convert boot.img into NAND boot folder"
+        echo "  p = Change 'command line' parameter in boot.img"
+
+      elif [ "$boot_folder" == "true" ]
+      then
+        echo "  y = Convert NAND boot folder into boot.img"
+        echo "  z = Extract kernel+ramdisk from NAND boot folder"
+      fi
+    fi
+  fi
+
+  echo "  a = Extract kernel+ramdisk from boot.img/recovery.img in any folder"
+  echo "  x = Exit"
+  echo
+  echo "  NOTE: Other options may not be shown in this menu *until* a specific"
+  echo "  action above is selected or a specific working folder is created."
+  echo "  (A working folder is created with Option 1 of the kitchen main menu!)"
+  echo
+  echo "  e.g. You won't see the option to re-pack a boot.img unless you unpack"
+  echo "  the boot.img first!  For re-packing you also need a working folder "
+  echo "  with the original boot.img so that the kitchen can use its header" 
+  echo "  information to construct the new boot.img."
+  echo
+  echo -n "? "
+
+  read enterLetter
+
+  if [ "$enterLetter" == "s" ]
+  then
+    scripts/show_boot_img_info
+
+  elif [ "$enterLetter" == "w" ]
+  then
+    scripts/ensure_boot_extracted
+
+  elif [ "$enterLetter" == "r" ] 
+  then
+    rm -rf BOOT-EXTRACTED; echo; echo "Deleted"
+
+  elif [ "$enterLetter" == "b" ] 
+  then
+    scripts/prompt_build_boot
+    scripts/build_boot_img
+
+  elif [ "$enterLetter" == "a" ]
+  then
+    scripts/extract_boot_img
+
+  elif [ "$enterLetter" == "n" ]
+  then
+    scripts/prompt_build_boot
+    scripts/build_nand_boot
+
+  elif [ "$enterLetter" == "c" ]
+  then
+    scripts/ensure_boot_extracted
+    scripts/build_nand_boot
+
+  elif [ "$enterLetter" == "p" ]
+  then
+    scripts/change_cmdline
+
+  elif [ "$enterLetter" == "y" ]
+  then
+    scripts/ensure_nand_extracted
+    scripts/build_boot_img
+
+  elif [ "$enterLetter" == "z" ]
+  then
+    scripts/ensure_nand_extracted
+
+  elif [ "$enterLetter" == "x" ]
+  then
+    exit 0
+  else 
+    echo "Invalid option"
+    continue
+  fi
+
+  scripts/press_enter
+
+done

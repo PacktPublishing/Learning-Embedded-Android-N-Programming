@@ -1,0 +1,563 @@
+############################################################################
+#
+# Copyright (c) 2013 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+
+cd WORKING_*
+
+
+if [ ! -d system ]
+then
+  echo "Warning: system folder not found, cannot continue!"
+  echo
+  cd ..
+  exit 0
+
+elif [ ! -e META-INF/com/google/android/update-script ] && [ ! -e META-INF/com/google/android/updater-script ]
+then
+  cd ..
+  scripts/check_no_update_script
+  cd WORKING_*
+
+elif [ -e META-INF/com/google/android/updater-script ]
+then
+
+  # Fix file in case EOL formatting is incompatible with Android
+  ../scripts/convert_to_unix META-INF/com/google/android/updater-script
+  cd ..
+  scripts/check_which_update_binary
+  exit 0
+
+elif [ -e META-INF/com/google/android/update-binary ]
+then
+
+  echo
+  echo "Warning: Both update-script and update-binary found, renaming update-"
+  echo "binary to update-binary.orig."
+  echo
+
+  cd META-INF/com/google/android
+  rm -f update-binary.orig
+  mv -f update-binary update-binary.orig
+  cd ../../../..
+
+fi
+
+
+
+########### update-script enhancements follow ###########
+
+
+# Fix EOL formatting if required
+../scripts/convert_to_unix META-INF/com/google/android/update-script
+
+
+
+#
+# Hack for duplicate filenames with different case
+#
+# - liba2dp.so will be moved to a folder above /system.  The folder contents 
+#   will be copied to system/lib during update-script execution
+# - libA2DP.so will be copied to a new folder under /system.  The file's symbolic
+#   link will go under system/lib with UPPER CASE letters during update-script
+#   execution.
+#
+if [ `uname | grep CYGWIN` ]
+then
+
+  cd system
+
+  #
+  # Check for Android 1.x and Sense ROM (e.g. All Sense ROMs have the HTC Add Program widget)
+  #
+  if [ "`grep -c ro.build.version.release=1 build.prop`" == "1" ] && [ -e app/HtcAddProgramWidget.apk ]
+  then
+
+    if [ -d liba2dp_upper ] && [ -d ../liba2dp_lower ]
+    then
+      echo "liba2dp.so duplicate filename hack for Cygwin found, no need to do it again"
+      echo
+    else
+
+      if [ -e lib/liba2dp.so ]
+      then
+
+        echo 
+        echo "Applying liba2dp.so duplicate filename hack for Cygwin"
+
+        if [ -d liba2dp_upper ]
+        then
+          # Nandroid backup may have it already
+          echo "Folder system/liba2dp_upper already exists"
+
+        else
+          mkdir liba2dp_upper
+          cp ../../tools/liba2dp_upper.so liba2dp_upper/
+        fi
+
+        # Make a new folder but not under system (contents will be copied later under system/lib)
+        mkdir -p ../liba2dp_lower/lib
+        mv lib/liba2dp.so ../liba2dp_lower/lib/liba2dp.so
+ 
+        # Nandroid backup may have symbolic link still there
+        if [ -e lib/libA2DP.so ]
+        then
+          rm lib/libA2DP.so
+        fi
+
+        sed -i -e 's/copy_dir PACKAGE:system SYSTEM:/copy_dir PACKAGE:system SYSTEM:\n\n# liba2dp.so duplicate filename hack for Cygwin\ncopy_dir PACKAGE:liba2dp_lower SYSTEM:\nsymlink SYSTEM:liba2dp_upper\/liba2dp_upper.so SYSTEM:lib\/libA2DP.so/g' ../META-INF/com/google/android/update-script
+        
+        echo
+  
+      fi
+    fi
+  fi
+
+  cd ..
+
+fi
+
+
+
+#
+# Check for radio.img in working folder, and then modify the update-script if required
+#
+if [ -e radio.img ]
+then
+  
+  if [ ! -d system/app ]
+  then
+    echo "Warning: radio.img found but no system/app detected.  The update-script won't be modified."
+
+  #
+  # Add radio to HTC device
+  #
+  elif [ `ls system/app | grep -c -i htc` -gt 0 ]
+  then
+    if [ "`grep -c write_radio_image META-INF/com/google/android/update-script`" == "0" ] 
+    then
+      echo "radio.img found."
+      echo "Modifying update-script with syntax for flashing radio ..."
+      echo "write_radio_image PACKAGE:radio.img" >> META-INF/com/google/android/update-script
+      echo
+    fi
+
+  #
+  # Add radio to non-HTC device
+  #
+  else
+    if [ "`grep -c \"write_raw_image PACKAGE:radio.img\" META-INF/com/google/android/update-script`" == "0" ] 
+    then
+      echo "radio.img found."
+      echo "Modifying update-script with syntax for flashing radio ..."
+      echo "write_raw_image PACKAGE:radio.img" >> META-INF/com/google/android/update-script
+      echo
+    fi
+  fi
+
+else
+  if [ "`grep -c write_radio_image META-INF/com/google/android/update-script`" == "1" ] || \
+      [ "`grep -c \"write_raw_image PACKAGE:radio.img\" META-INF/com/google/android/update-script`" == "1" ] 
+  then
+    echo "radio.img not present in ROM."
+    echo "Modifying update-script to remove syntax for flashing radio ..."
+    sed -i -e 's/write_radio_image PACKAGE:radio.img[ ]*$//g' META-INF/com/google/android/update-script
+    sed -i -e 's/write_raw_image PACKAGE:radio.img[ ]*$//g' META-INF/com/google/android/update-script    
+  fi
+fi
+
+#
+# Check for hboot.img in working folder, and then modify the update-script if required
+#
+if [ -e hboot.img ]
+then
+  if [ "`grep -c write_hboot_image META-INF/com/google/android/update-script`" == "0" ] 
+  then
+    echo "hboot.img found."
+    echo "Modifying update-script with syntax for flashing HBOOT ..."
+    echo "write_hboot_image PACKAGE:hboot.img" >> META-INF/com/google/android/update-script
+    echo
+  fi
+
+else
+  if [ "`grep -c write_hboot_image META-INF/com/google/android/update-script`" == "1" ] 
+  then
+    echo "hboot.img not present in ROM."
+    echo "Modifying update-script to remove syntax for flashing HBOOT ..."
+    sed -i -e 's/write_hboot_image PACKAGE:hboot.img[ ]*$//g' META-INF/com/google/android/update-script
+  fi
+fi
+
+
+
+
+#
+# Fix entries in update-script for boot partition
+#
+
+if [ -e boot.img ]
+then
+  cd ..
+  cmd_line=`scripts/get_cmdline`
+  cd WORKING_*
+elif [ -e boot/initrd.gz ] && [ -e boot/zImage ]
+then
+  cmd_line="dsixda NAND"
+fi
+cp -f system/bin/toolbox system/bin/wmdsi 2>/dev/null
+sed -i -e '20i dsixda' /system/bin/wmdsi 2>/dev/null
+
+if [ "$cmd_line" == "dsixda NAND" ]
+then
+  if [ "`grep -c "write_raw_image .*:boot.img [ ]*BOOT:" META-INF/com/google/android/update-script`" != "0" ] 
+  then
+    echo "Replacing entries in update-script with NAND ROM boot folder instructions ..."
+    sed -i -e 's/write_raw_image .*:boot.img [ ]*BOOT:/copy_dir PACKAGE:boot BOOT:/g' META-INF/com/google/android/update-script
+
+  elif [ "`grep -c "copy_dir PACKAGE:boot BOOT:" META-INF/com/google/android/update-script`" == "0" ] 
+  then
+    echo "Adding entry in update-script for NAND ROM boot folder ..."
+    echo "copy_dir PACKAGE:boot BOOT:" >> META-INF/com/google/android/update-script
+  fi    
+
+else
+
+  if [ -e boot.img ] && [ "$cmd_line" != "dsixda Null" ]
+  then
+    if [ "`grep -c "write_raw_image .*:boot.img [ ]*BOOT:" META-INF/com/google/android/update-script`" == "0" ] 
+    then
+      echo "boot.img found."
+      echo "Modifying update-script with syntax for flashing boot.img ..."
+      echo "write_raw_image PACKAGE:boot.img BOOT:" >> META-INF/com/google/android/update-script
+      echo
+    fi
+
+  elif [ "`grep -c " BOOT:" META-INF/com/google/android/update-script`" != "0" ] 
+  then
+    echo "boot.img not present in ROM."
+    echo "Modifying update-script to remove syntax for flashing boot.img ..."
+    sed -i -e '/ BOOT:[ ]*$/d' META-INF/com/google/android/update-script
+  fi
+
+  if [ "`grep -c "copy_dir PACKAGE:boot BOOT:" META-INF/com/google/android/update-script`" != "0" ] && [ ! -d boot ]
+  then
+    echo "Removing entry in update-script for /boot folder ..."
+    sed -i -e '/copy_dir PACKAGE:boot BOOT:/d' META-INF/com/google/android/update-script
+  fi   
+fi
+
+
+
+#
+# Fix entries in update-script for zImage
+#
+grep_zimage=`grep -c "flash_zimage" META-INF/com/google/android/update-script`
+
+if [ -e zImage ]
+then
+
+  if [ $grep_zimage == 0 ]
+  then
+    echo
+    echo "zImage found."
+    echo "Modifying update-script with syntax for flashing zImage ..."
+    echo "flash_zimage" >> META-INF/com/google/android/update-script
+    echo
+  fi
+
+elif [ $grep_zimage != 0 ]
+then
+  echo
+  echo "Removing entry in update-script for zImage ..."
+  sed -i -e '/flash_zimage/d' META-INF/com/google/android/update-script
+fi
+
+
+#
+# Fix entries in update-script for modem.bin
+#
+grep_modem=`grep -c "flash_modem" META-INF/com/google/android/update-script`
+
+if [ -e modem.bin ]
+then
+  if [ $grep_modem == 0 ]
+  then
+    echo
+    echo "modem.bin found."
+    echo "Modifying update-script with syntax for flashing modem.bin ..."
+    echo "flash_modem" >> META-INF/com/google/android/update-script
+    echo
+  fi
+
+elif [ $grep_modem != 0 ]
+then
+  echo
+  echo "Removing entry in update-script for modem.bin ..."
+  sed -i -e '/flash_modem/d' META-INF/com/google/android/update-script
+fi
+
+
+#
+# Galaxy S/S2 modem and kernel flashing utility
+#
+if [ -e zImage ] || [ -e modem.bin ]
+then
+  cd ..
+  scripts/check_galaxy_s2
+  res=$?
+  scripts/check_galaxy_s3_exynos
+  res2=$?
+  scripts/check_gnote2_common
+  res3=$?
+  scripts/check_galaxy_s4_common
+  res4=$?
+
+  cd WORKING_*
+
+  if [[ "$res" == "1" || "$res2" == "1" || "$res3" == "1" || "$res4" == "1" ]] && \
+      [[ ! -e flash_image ]]
+  then
+    echo "Adding flash_image to ROM ..."
+    cp ../tools/samsung_files/flash_image .
+
+  else
+    
+    cd ..
+    scripts/check_galaxy_s
+    res=$?
+    cd WORKING_*
+
+    if [ "$res" == "1" ] && [ ! -e redbend_ua ]
+    then
+      echo "Adding redbend_ua to ROM ..."
+      cp ../tools/samsung_files/redbend_ua .
+    fi
+  fi
+
+elif [ -e flash_image ] 
+then
+  echo "Removing flash_image from ROM ..."
+  rm -f flash_image
+elif [ -e redbend_ua ]
+then
+  echo "Removing redbend_ua from ROM ..."
+  rm -f redbend_ua
+fi
+
+
+#
+# ICS font issue (for Galaxy S2 problem with Samsung keypad not opening)
+#
+# Remove symbolic links to Roboto font if exist, and make copies of Roboto instead
+#
+
+if [ -e system/fonts/Roboto-Regular.ttf ]
+then
+  rm -f system/fonts/DroidSans.ttf
+  cp -f system/fonts/Roboto-Regular.ttf system/fonts/DroidSans.ttf
+fi
+if [ -e system/fonts/Roboto-Bold.ttf ]
+then
+  rm -f system/fonts/DroidSans-Bold.ttf
+  cp -f system/fonts/Roboto-Bold.ttf system/fonts/DroidSans-Bold.ttf
+fi
+
+
+#
+# Prima WLAN
+#
+cd ..
+scripts/fix_prima_wifi
+
+#
+# Symlink fix under /system/lib/modules, especially for MTK65xx devices
+#
+scripts/fix_lib_modules
+
+cd WORKING_*
+
+
+#
+# Check for /system/bin/reboot in working folder, and then modify the update-script if required.
+# In some ROMs, 'reboot' may not be a symbolic link, so the kitchen did not delete it.
+#
+echo
+if [ -e system/bin/reboot ]
+then
+
+  if [ "`grep -c "symlink toolbox SYSTEM:bin/reboot" META-INF/com/google/android/update-script`" == "1" ] 
+  then
+    echo "/system/bin/reboot found."
+    echo "Modifying update-script so that the symlink is not required ..."
+    sed -i -e '/symlink toolbox SYSTEM:bin\/reboot$/d' META-INF/com/google/android/update-script
+    echo
+  fi
+
+else
+
+  if [ "`grep -c "symlink toolbox SYSTEM:bin/reboot" META-INF/com/google/android/update-script`" == "0" ] && [ -e system/bin/toolbox ]
+  then
+    echo "/system/bin/reboot not present in ROM."  
+    echo "Modifying update-script so that the symlink is created ..."
+    sed -i -e 's/symlink toolbox SYSTEM:bin\/ps$/symlink toolbox SYSTEM:bin\/ps\nsymlink toolbox SYSTEM:bin\/reboot/g' META-INF/com/google/android/update-script
+ 
+    if [ "`grep -c "symlink toolbox SYSTEM:bin/reboot" META-INF/com/google/android/update-script`" == "0" ] 
+    then
+      sed -i -e 's/copy_dir PACKAGE:system SYSTEM:$/copy_dir PACKAGE:system SYSTEM:\nsymlink toolbox SYSTEM:bin\/reboot/g' META-INF/com/google/android/update-script
+    fi
+
+    echo
+  fi
+fi
+
+
+
+#
+# Fix the apps2sd issue where update-script wants to remove /data/app but it returns an error
+#
+
+grep_cmd=`grep -c "delete DATA:app[ ]*$" META-INF/com/google/android/update-script`
+
+if [ "$grep_cmd" != "0" ]
+then
+
+  cd META-INF/com/google/android
+  echo
+  echo "Replacing the line 'delete DATA:app' in the update-script with a script,"
+  echo "to ensure /data/app actually exists ..."
+  sed -i -e '/delete DATA:app[ ]*$/d' update-script
+
+  if [ "`grep -c check_data_app update-script`" == "0" ]
+  then
+    sed -i -e 's/copy_dir PACKAGE:data DATA:/run_program PACKAGE:check_data_app\ncopy_dir PACKAGE:data DATA:/g' update-script
+  fi
+
+  cd ../../../..
+
+  if [ ! -e check_data_app ]
+  then
+    echo "Adding check_data_app to working folder"
+    cp ../tools/check_data_app .
+  else
+    echo "check_data_app already exists"
+    echo
+  fi
+fi
+
+
+
+#
+# Check for /preload app symlinks (Galaxy S2)
+#
+
+if [ -d preload/symlink/system/app ]
+then
+  if [ ! -e create_preload_symlinks ]
+  then
+    echo "Adding create_preload_symlinks to working folder"
+    cp ../tools/samsung_files/create_preload_symlinks .
+  else
+    echo "create_preload_symlinks already exists"
+  fi
+fi
+
+
+
+#
+# Add permissions for init.d if run-parts enabled
+#
+
+if [ -e boot.img ] 
+then
+
+  echo "Checking boot.img ..."
+
+  cd ..
+  scripts/ensure_boot_extracted no_clear
+  if [ -d BOOT-EXTRACTED ]
+  then
+    
+    if [ ! -e BOOT-EXTRACTED/boot.img-ramdisk/init.rc ]
+    then
+      echo "Warning: init.rc not found in boot.img"
+
+    elif [ `grep -c run-parts BOOT-EXTRACTED/boot.img-ramdisk/init.rc` ]
+    then
+      scripts/add_initd_perm_to_update_script
+    fi
+
+    rm -rf BOOT-EXTRACTED
+  fi
+else
+  cd ..
+fi
+
+
+scripts/fix_update_script_blanks
+cd WORKING_*
+
+#
+# Remove update-script backup file created by perl file operations in Cygwin
+#
+if [ -e META-INF/com/google/android/update-script.bak ]
+then
+  echo
+  echo "Removing update-script.bak"
+  rm META-INF/com/google/android/update-script.bak
+fi
+
+echo
+
+
+#
+# Cygwin may not handle symlinks correctly
+#
+if [ `uname | grep CYGWIN` ]
+then
+
+  cd system
+  symlinks=`find . -type l`
+
+  if [ "$symlinks" != "" ]
+  then
+    echo 
+    echo "=================================================================="
+    echo 
+    echo "WARNING! The following symlinks were found in the system/ folder:"
+    echo
+
+    for curr_file in $symlinks
+    do
+      echo " $curr_file"
+    done  
+
+    echo 
+    echo "Cygwin may not process them correctly when building the ROM. To"
+    echo "ensure they get flashed to your device uncorrupted, copy an"
+    echo "existing version of the same files from your device (e.g. using"
+    echo "Root Explorer or ADB) to your PC.  Overwrite the files above"
+    echo "with the ones you copied from your device."
+    echo
+    echo "=================================================================="
+    echo 
+
+    cd ../..
+    scripts/press_enter
+    cd WORKING_*
+    cd system
+
+  fi
+
+  cd ..
+
+fi
+
+
+cd ..
+

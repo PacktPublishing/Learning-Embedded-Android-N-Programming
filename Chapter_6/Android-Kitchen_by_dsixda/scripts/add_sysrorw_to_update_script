@@ -1,0 +1,80 @@
+############################################################################
+#
+# Copyright (c) 2012 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+
+cd WORKING_*
+cd META-INF/com/google/android
+
+if [ -e update-script ]
+then
+
+  if [ "`grep -om 1 sysro update-script`" == "sysro" ] && [ "`grep -om 1 sysrw update-script`" == "sysrw" ]
+  then
+    echo "update-script already has sysro/sysrw content"
+
+  else
+
+    #
+    # Do this to prevent conflicts with the update-script in ROMs that already have the binary
+    #
+    if [ -e ../../../../system/bin/sysro ]
+    then
+
+      if [ "`find ../../../../system/xbin -name sysro`" == "" ]
+      then
+        echo "Copying system/bin/sysro to system/xbin/sysro"
+        cp -f ../../../../system/bin/sysro ../../../../system/xbin/sysro
+      fi
+    fi
+
+    if [ -e ../../../../system/bin/sysrw ]
+    then
+
+      if [ "`find ../../../../system/xbin -name sysrw`" == "" ]
+      then
+        echo "Copying system/bin/sysrw to system/xbin/sysrw"
+        cp -f ../../../../system/bin/sysrw ../../../../system/xbin/sysrw
+      fi
+    fi
+
+    echo
+    echo "Updating update-script with sysro and sysrw entries"
+
+
+    if [ `grep -c "set_perm_recursive.*SYSTEM:xbin[ ]*$" update-script` != 0 ]
+    then
+      sed -i -e 's/set_perm_recursive\(.*\)SYSTEM:xbin[ ]*$/set_perm_recursive\1SYSTEM:xbin\nset_perm 0 0 04755 SYSTEM:xbin\/sysrw\nset_perm 0 0 04755 SYSTEM:xbin\/sysro\n/' update-script
+
+    elif [ `grep -c "init.goldfish.sh" update-script` != 0 ]
+    then
+      perl -pi -e 's/set_perm 0 2000 0550 SYSTEM:etc\/init.goldfish.sh/set_perm 0 2000 0550 SYSTEM:etc\/init.goldfish.sh\nset_perm 0 0 04755 SYSTEM:xbin\/sysrw\nset_perm 0 0 04755 SYSTEM:xbin\/sysro\n/g' update-script
+ 
+    elif [ `grep -c "write_raw_image .*:boot.img BOOT:" update-script` != 0 ]
+    then
+      sed -i -e 's/write_raw_image \(.*:boot.img\) BOOT:/set_perm 0 0 04755 SYSTEM:xbin\/sysrw\nset_perm 0 0 04755 SYSTEM:xbin\/sysro\nwrite_raw_image \1 BOOT:/' update-script
+    
+    else
+      echo "set_perm 0 0 04755 SYSTEM:xbin/sysrw" >> update-script
+      echo "set_perm 0 0 04755 SYSTEM:xbin/sysro" >> update-script
+    fi
+    
+    if [ "`grep -om 1 sysro update-script`" != "sysro" ] || [ "`grep -om 1 sysrw update-script`" != "sysrw" ]
+    then
+      echo "Error: Unable to update update-script with sysro/sysrw"
+    fi
+  fi
+
+else
+  echo "Error: No update-script found!"
+fi
+
+cd ../../../../..
+
+scripts/fix_update_script_blanks

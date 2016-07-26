@@ -1,0 +1,154 @@
+############################################################################
+#
+# Copyright (c) 2012 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+clear
+
+if [ -d MY_DEVICE_WORKING ]
+then
+  echo "Removing MY_DEVICE_WORKING folder"
+  rm -rf MY_DEVICE_WORKING
+fi
+
+if [ -d MY_KERNEL ]
+then
+  echo "Removing MY_KERNEL folder"
+  rm -rf MY_KERNEL
+fi
+
+if [ -d BOOT-EXTRACTED ]
+then
+  echo "Removing BOOT-EXTRACTED folder"
+  rm -rf BOOT-EXTRACTED
+fi
+
+
+
+clear
+echo
+echo "*************************************************************"
+echo
+echo "--> Obtain a ROM that is currently meant for YOUR DEVICE <--"
+echo
+echo "*************************************************************"
+
+scripts/check_rom no_info kernel_only
+
+# If working folder is open and cannot move it, handle the error properly
+if [ "$?" != "1" ]
+then
+  scripts/press_enter
+else
+  exit 1
+fi
+
+if [ -d WORKING_* ]
+then
+
+  cd WORKING_*
+
+  if [ -e zImage ]
+  then
+    mkdir ../BOOT-EXTRACTED
+    cp -v zImage ../BOOT-EXTRACTED/
+    cd ..
+
+  else
+    cd ..
+    scripts/ensure_boot_extracted
+  fi
+
+else
+  exit 0
+fi
+
+if [ ! -d BOOT-EXTRACTED ]
+then
+  echo "Error: BOOT-EXTRACTED folder not found"
+  exit 0
+fi
+
+
+echo 
+echo "Renaming working folder to MY_DEVICE_WORKING"
+mv WORKING_* MY_DEVICE_WORKING
+
+echo
+echo "Creating folder MY_KERNEL"
+mkdir MY_KERNEL
+
+
+
+#
+# Copy my device's kernel to MY_KERNEL
+# Also copy my device's modules/drivers to MY_KERNEL
+#
+
+echo "Copying zImage to MY_KERNEL"
+cp BOOT-EXTRACTED/zImage MY_KERNEL/
+
+#
+# We need this step so that we can determine base address
+# when porting!
+#
+echo "Copying boot.img to MY_KERNEL"
+cp MY_DEVICE_WORKING/boot.img MY_KERNEL/
+
+
+if [ -d MY_DEVICE_WORKING/system/lib/modules ]
+then
+  mkdir -p MY_KERNEL/system/lib/modules
+  echo 
+  echo "Copying wireless (system/lib/modules) ..."
+  cp -r MY_DEVICE_WORKING/system/lib/modules/* MY_KERNEL/system/lib/modules/
+fi
+
+if [ -d MY_DEVICE_WORKING/system/usr ]
+then
+  mkdir -p MY_KERNEL/system/usr
+  echo 
+  echo "Copying buttons (system/usr) ..."
+  cp -r MY_DEVICE_WORKING/system/usr/* MY_KERNEL/system/usr/
+fi
+
+if [ -d MY_DEVICE_WORKING/system/lib/hw ]
+then
+  mkdir -p MY_KERNEL/system/lib/hw
+  echo 
+  echo "Copying lights (system/lib/hw) ..."
+  cp -r MY_DEVICE_WORKING/system/lib/hw/* MY_KERNEL/system/lib/hw/
+fi
+
+if [ -e MY_DEVICE_WORKING/system/etc/vold.fstab ]
+then
+  mkdir -p MY_KERNEL/system/etc
+  echo 
+  echo "Copying sdcard mount info (system/etc/vold.fstab) ..."
+  cp -v MY_DEVICE_WORKING/system/etc/vold.fstab MY_KERNEL/system/etc/
+fi
+
+if [ -e MY_DEVICE_WORKING/system/etc/vold.conf ]
+then
+  mkdir -p MY_KERNEL/system/etc
+  echo 
+  echo "Copying sdcard mount info (system/etc/vold.conf) ..."
+  cp -v MY_DEVICE_WORKING/system/etc/vold.conf MY_KERNEL/system/etc/
+fi
+
+if [ -d MY_DEVICE_WORKING/system/modules ]
+then
+  mkdir -p MY_KERNEL/system/modules
+  echo 
+  echo "Copying other modules (system/modules) ..."
+  cp -r MY_DEVICE_WORKING/system/modules/* MY_KERNEL/system/modules/
+fi
+
+
+rm -rf BOOT-EXTRACTED
+

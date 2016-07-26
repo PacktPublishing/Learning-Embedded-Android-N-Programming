@@ -1,0 +1,72 @@
+############################################################################
+#
+# Copyright (c) 2013 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+clear
+
+if [ ! -e tools/deodex_files/api_level.txt ]
+then
+  echo "Error: Cannot find tools/deodex_files/api_level.txt"
+  scripts/press_enter
+  exit 0
+fi
+
+api_level=`scripts/get_api_level`
+
+echo
+echo "The kitchen has the current API level set to: $api_level"
+echo "Ensure you have set the correct API level for your ROM!"
+echo
+echo "Each API level corresponds to at least one Android OS version."
+echo
+echo "e.g."
+echo "      Android 4.2-4.2.2   = API Level 17"
+echo "      Android 4.1-4.1.1   = API Level 16"
+echo "      Android 4.0.3-4.0.4 = API Level 15"
+echo "      Android 4.0-4.0.2   = API Level 14"
+echo "      Android 3.2         = API Level 13"
+echo "      Android 3.1.x       = API Level 12"
+echo "      Android 3.0.x       = API Level 11"
+echo "      Android 2.3.3+      = API Level 10"
+echo
+echo "NOTE: The above is not the full list."
+echo
+echo "The complete set of mappings is found at:"
+echo "http://developer.android.com/guide/appendix/api-levels.html"
+echo
+
+echo -n "Please enter new level number, or 0 to cancel (currently: $api_level): "
+read set_level
+
+if [ "`echo $set_level | sed 's/[0-9]*//'`" != "" ] || [ "$set_level" == "" ]
+then
+  echo
+  echo "Warning: Invalid input - nothing will be changed"
+
+elif [ "$set_level" == "0" ]
+then
+  echo
+  echo "OK, nothing will be changed"
+
+else    
+  echo $set_level > tools/deodex_files/api_level.txt
+  current_level=`scripts/get_api_level`
+
+  echo
+  echo "In api_level.txt, the API level is now set to: $current_level"
+
+  if [ "$current_level" != "$set_level" ]
+  then
+    echo
+    echo "Warning: Name is not the same as specified"
+  fi
+fi
+
+scripts/press_enter
+

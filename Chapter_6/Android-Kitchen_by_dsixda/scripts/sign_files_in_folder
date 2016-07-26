@@ -1,0 +1,107 @@
+############################################################################
+#
+# Copyright (c) 2011 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+clear
+
+date_str=`date '+%m%d%y_%H%M%S'`
+files_dir=sign_files_$date_str
+
+echo
+echo "Creating folder `pwd`/$files_dir ..."
+mkdir $files_dir
+
+echo
+echo "---> Place your APK and/or ZIP file(s) into the folder mentioned above <--"
+
+scripts/press_enter
+
+cd $files_dir
+grep_apk=`find . | grep -i \\.apk$ | sort -f`
+grep_zip=`find . | grep -i \\.zip$ | sort -f`
+grep_files="$grep_apk $grep_zip"
+
+if [ "$grep_files" != " " ]
+then
+
+  cp ../tools/signapk_files/testkey.* .
+  cp ../tools/signapk_files/signapk.jar .
+
+  echo
+
+  for filename in $grep_files
+  do
+
+    filename=`echo $filename | sed -e 's/\.\///g'`
+
+    if [ ! -e $filename ]
+    then
+
+      echo "Error: file '$filename' not found"
+
+      grep_apk2=`echo $filename | grep -i \\.apk$`
+      grep_zip2=`echo $filename | grep -i \\.zip$`
+
+      if [ "$grep_apk2" == "" ] && [ "$grep_zip2" == "" ]
+      then
+        echo "Error: You have spaces in your filename - the OS does not fully support them"
+      fi
+    
+      break
+
+    fi
+
+
+    echo Signing $filename ...
+
+    final_file="signed_$filename"
+    final_file=`echo $final_file | sed -e 's/unsigned/(u)/g'`
+    java -jar signapk.jar testkey.x509.pem testkey.pk8 $filename $final_file
+    res=$?
+
+    if [ "$res" == "0" ]
+    then
+      rm -f $filename
+
+      # Don't add the 'signed' prefix to APK files
+      if [ "`echo $filename | grep -i \\.apk$`" != "" ]
+      then
+        mv -f $final_file $filename
+      fi
+
+    else
+      echo "Error signing $filename"
+      echo
+      rm -f $final_file
+    fi
+
+  done
+
+  rm -f testkey.*
+  rm -f signapk.jar
+
+  echo
+  echo
+  echo "Folder listing:"
+  echo "---------------"
+  echo
+  ls -X
+
+  cd ..
+
+else
+  echo "Error: No *.apk or *.zip found!"
+  echo
+  cd ..
+  echo "Removing $files_dir folder"
+  rm -rf $files_dir
+  exit 0
+fi      
+  
+echo

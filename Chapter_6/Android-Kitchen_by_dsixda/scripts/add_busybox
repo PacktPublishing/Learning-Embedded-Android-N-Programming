@@ -1,0 +1,129 @@
+############################################################################
+#
+# Copyright (c) 2012 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+#
+# exit 1 = busybox not created
+# exit 0 = busybox is now in working folder
+#
+
+if [ "$1" == "" ]
+then
+  clear
+
+elif [ "$1" == "show_help" ]
+then
+
+  clear
+  echo
+  echo "-----------------------------------------------------------------"
+  echo  
+  echo "BusyBox is an executable file that combines tiny versions of"
+  echo "many common UNIX utilities.  It is required for some root-enabled"
+  echo "applications."
+  echo
+  echo "-----------------------------------------------------------------"
+  echo
+  echo -n "Add BusyBox (y/n)? (default: y): "
+  read do_bb
+
+  if [ "$do_bb" == "n" ]
+  then
+    exit 1
+  fi    
+fi
+
+if [ ! -d WORKING_* ]
+then
+  echo No working folder found!
+  exit 1
+fi
+
+cd WORKING_*
+
+su_path=`find . -name su`
+
+if [ "$su_path" == "" ]
+then
+  echo "'su' binary not found under working folder!"
+  cd ..
+  exit 1
+else
+  echo
+  echo "Found $su_path"
+fi
+
+
+version=`more ../tools/busybox_files/version.txt | sed -e 's/BusyBox \(.*\)$/\1/g'`
+
+if [ -e system/bin/busybox ]
+then
+  echo
+  echo "Working folder already has /system/bin/busybox"
+
+  if [ "$1" == "show_help" ]
+  then
+    echo -n "Replace with BusyBox $version (y/n)? (default: y): "
+    read replace_bin_bb
+    echo
+
+    if [ "$replace_bin_bb" == "n" ]
+    then
+      echo "Cancelled"
+    else
+      echo "Replacing /system/bin/busybox"
+      cp -f ../tools/busybox_files/busybox system/bin/
+    fi
+  fi
+
+  cd ..
+  exit 0
+fi
+
+echo
+
+if [ -d system/xbin ]
+then
+  echo Found /system/xbin
+
+  if [ -e system/xbin/busybox ] 
+  then
+
+    echo
+    echo "Working folder already has /system/xbin/busybox"
+
+    if [ "$1" == "show_help" ]
+    then
+      echo -n "Replace with BusyBox $version (y/n)? (default: y): "
+      read replace_bb
+      echo
+    else
+      replace_bb=n
+    fi
+
+    if [ "$replace_bb" == "n" ]
+    then
+      cd ..
+      exit 0
+    fi
+
+    echo "Replacing /system/xbin/busybox"
+  fi
+else
+  echo Creating /system/xbin
+  mkdir system/xbin
+fi
+
+echo "Adding /system/xbin/busybox"
+cp -f ../tools/busybox_files/busybox system/xbin/
+cd ..
+
+scripts/add_busybox_to_update_script
+
+exit 0

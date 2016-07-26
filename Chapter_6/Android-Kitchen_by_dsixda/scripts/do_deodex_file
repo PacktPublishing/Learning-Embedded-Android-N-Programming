@@ -1,0 +1,138 @@
+############################################################################
+#
+# Copyright (c) 2012 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+# Mandatory
+api_level=$1
+
+# Mandatory
+odex_file=$2
+
+# Mandatory
+bootclass_dir=$3
+
+if [ "$odex_file" == "" ]
+then
+  echo "Error: No .odex file specified"
+
+elif [ -e $odex_file ]
+then
+  echo "Disassembling $odex_file ..."
+else
+  echo "Error: $odex_file not found"
+fi
+
+bin_list="baksmali.jar smali.jar"
+
+for bin_file in $bin_list
+do
+  if [ ! -e $bin_file ]
+  then
+    echo "Error: $bin_file not found!"
+    exit 0
+  fi
+done
+
+
+
+#
+# Call baksmali
+#
+
+java_cmd="java -Xmx512m -jar baksmali.jar -a $api_level -d $bootclass_dir -x $odex_file"
+echo $java_cmd
+$java_cmd
+is_error=$?
+
+  
+#
+# If there were no errors, then assemble it with smali
+#
+
+if [ "$is_error" == "0" ] && [ -d out ]
+then
+
+  echo "Assembling into classes.dex ..."
+  java_cmd="java -Xmx512m -jar smali.jar -a $api_level -o classes.dex out"
+  
+  echo $java_cmd
+  $java_cmd
+
+  rm -rf out
+
+  #
+  # Ensure classes.dex was produced
+  #
+  if [ -e classes.dex ]
+  then
+
+    #
+    # Ensure the .odex file's .apk or .jar is found
+    #
+
+    no_ext=`echo $odex_file | sed 's/.odex//'`
+    main_file=$no_ext.apk
+
+    error_found=no
+
+    if [ -e $main_file ]
+    then
+      echo "Found $main_file"
+      ext=apk
+
+    else
+      main_file=$no_ext.jar
+      
+      if [ -e $main_file ]
+      then
+        echo "Found $main_file"
+        ext=jar
+      else          
+        echo "ERROR: Can't find $no_ext.jar or $no_ext.apk"
+        error_found=yes
+      fi
+    fi
+
+
+    if [ $error_found == yes ]
+    then
+
+      echo "Removing classes.dex ..."
+      rm -f classes.dex
+
+      # Keep the odex file so that it's left unchanged
+
+    else
+
+      echo "Removing $odex_file ..."
+      rm -f $odex_file
+
+      echo "Put classes.dex into $main_file ..."
+      zip -r -q $main_file classes.dex
+      rm -f classes.dex
+      if [ -e $main_file ]
+      then
+        echo "$main_file has been deodexed"
+      fi
+      exit 0
+    
+    fi
+
+  else
+    echo "WARNING: Unable to produce classes.dex!"
+    exit 1
+  fi          
+
+else
+  #echo "WARNING: Cannot deodex $odex_file"
+  rm -rf out
+  exit 1
+fi
+
+

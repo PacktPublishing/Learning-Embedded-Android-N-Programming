@@ -1,0 +1,45 @@
+
+----------------------------------------------------------------------
+
+The format for each ROM must be one of the following:
+ 
+ - system.img + optional boot.img/lib.img (e.g. stock ROM or Nandroid)
+ - ZIP file for a custom ROM              (e.g. update.zip)
+ - ZIP file containing *.img              (e.g. stock rom.zip)
+ - ZIP file containing shipped ROM in SYSTEM + BOOT folder format
+ - Working folder made with this kitchen  (e.g. WORKING_old_rom)
+ 
+ Other formats:
+ 
+ Samsung Galaxy S:
+ - factoryfs.rfs + optional cache.rfs/zImage
+ - PDA.tar.md5 + optional CSC.tar.md5/PHONE.tar.md5
+ - PDA.tar + optional CSC.tar/PHONE.tar
+ - TAR/ZIP file containing the above 
+
+ Samsung Galaxy S Plus:
+ - system.img.ext4 + optional cache.img.ext4/boot.img
+ - TAR/ZIP file containing the above
+ 
+ Samsung Galaxy SII:
+ - factoryfs.img + optional hidden.img/cache.img/zImage  
+ - system.img.ext4 + optional cache.img.ext4/boot.img
+ - TAR/ZIP file containing the above
+ - system.ext4.tar + optional boot.img (Nandroid backup)
+ 
+ Samsung Galaxy SIII / Galaxy Note II / Galaxy S4
+ - system.img.ext4 + optional tomb.img.ext4/cache.img.ext4/boot.img
+ - system.img + optional cache.img/boot.img/modem.bin
+ - system.img.ext4 + optional cache.img/boot.img/modem.bin
+ - TAR/ZIP file containing the above
+ - system.ext4.tar + optional boot.img (Nandroid backup)
+
+ Samsung - untested devices (e.g. Galaxy Mini):
+ - system.rfs + optional csc.rfs/boot.img
+ - TAR/ZIP file containing the above
+
+ Huawei:
+ - APP file from Huawei software update (e.g. UPDATE.APP)
+
+ ----------------------------------------------------------------------
+ 

@@ -1,0 +1,607 @@
+############################################################################
+#
+# Copyright (c) 2013 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+#
+# This script has two arguments:
+#
+# $1 = file name (mandatory)
+# $2 = "kernel_only" or "name_given" (optional)
+#
+
+
+update_file=$1
+ 
+echo "Selected $update_file"
+
+# Trim spaces in file name
+update_file2=`echo $update_file | tr ' ' '_'`
+
+if [ "$update_file" != "$update_file2" ]
+then
+  echo "Renaming to $update_file2"
+  mv "original_update/$update_file" original_update/$update_file2
+  update_file=$update_file2
+fi
+
+#
+# Working folder name
+#
+build_dir=`scripts/set_working_folder_name $2` 
+
+
+#
+# Creating folder structure
+#
+
+echo
+echo "Creating working folder $build_dir ..."
+mkdir $build_dir
+
+echo
+echo "Extracting ROM from ZIP file ..."
+
+if [ `uname | grep CYGWIN` ]
+then
+
+  #
+  # Instead of 'unzip -qo' (the 'o' would force overwrite), show the user a prompt if a duplicate filename is encountered;
+  # e.g. In a case where we have /system/lib/libdivxdrm.so and /system/lib/libDivxDrm.so, it would ask to overwrite/rename
+  # or ignore one of them.  This way, the user won't be unaware of the duplicate file name.
+  #
+  # To show the prompt in the unzip command, disable the output to /dev/null. To prevent displaying warnings about excluded  
+  # files (because /dev/null is not used anymore) put them in the 'rm' command instead of in unzip's '-x' arguments.
+  #
+  # This is not a faster method than "unzip -q ... -x ... 2>/dev/null", but it prevents the kitchen from hanging at unzip.
+  #
+  # Also, this is just a workaround, it doesn't fix the duplicate file name issue. You have two options to fix the issue:
+  #
+  # 1) Use an operating system that uses case-sensitive file names (Linux or OS X)
+  # 2) In the Windows registry, set HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\kernel\obcaseinsensitive to 0 and
+  #    reboot... but do this at your own risk.
+  #
+  unzip -q original_update/$update_file -d $build_dir 2>&1 | tee unzip.log
+  unzip_result=$?
+  
+  rm -f bootloader.img recovery.img recovery_signed.img userdata.img radio.img rcdata.img splash1.nb0 splash2.nb0 android-info.txt 
+
+  replace_count=`grep -c replace unzip.log`
+  rm -f unzip.log
+
+  if [ $replace_count -gt 0 ]
+  then
+    echo
+    echo
+    echo "WARNING"
+    echo "-------"
+    echo "One of the folders in your ZIP archive contains two files with the SAME NAME that differ"
+    echo "by upper and lower case, which is the reason you saw the prompt above.  Because Windows"
+    echo "is case-insensitive, it treats both files as a SINGLE file rather than two distinct"
+    echo "files!"
+    echo
+    echo "You can choose to ignore this issue, or quit. There are two ways to resolve this:"
+    echo 
+    echo "1) Use an operating system that treats file names as case-sensitive (Linux or OS X), OR"
+    echo "2) In the Windows registry, set: "
+    echo "   HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\kernel\obcaseinsensitive to 0"
+    echo "   and reboot. However, this affects all of Windows - do this at your own risk!"
+    echo 
+    echo
+    echo -n "Do you wish to ignore this issue (y/n)? (default: n): "
+    read do_ignore
+
+    if [ "$do_ignore" != "y" ]
+    then
+      echo
+      echo "OK, aborting"
+      cd ..
+      exit 1
+    else
+      echo
+      echo "OK, ignoring it, but your new ROM may have stability issues!"
+    fi
+  fi
+
+else
+  unzip -q original_update/$update_file -d $build_dir -x bootloader.img recovery.img recovery_signed.img userdata.img radio.img rcdata.img splash1.nb0 splash2.nb0 android-info.txt 2>/dev/null
+
+  unzip_result=$?
+
+fi
+
+if [ "$unzip_result" == "9" ]
+then
+  echo
+  echo "Error: Cannot extract ROM!"
+  cd ..
+  exit 1
+fi
+
+cd $build_dir
+
+
+
+#
+# Check for the required IMG files
+#
+
+echo
+
+if [ "`find . -maxdepth 1 | grep .img | grep -c system_`" == "1" ]
+then
+  echo "Renaming ..."
+  mv -v system_*.img system.img
+fi 
+
+rm -vf hboot*.img
+
+if [ "`find . -maxdepth 1 | grep .img | grep -c boot_`" == "1" ]
+then
+  echo "Renaming ..."
+  mv -v boot_*.img boot.img
+fi 
+
+if [ "`find . -maxdepth 1 | grep .img | grep -c lib_`" == "1" ]
+then
+  echo "Renaming ..."
+  mv -v lib_*.img lib.img
+fi 
+
+
+if [ -e system.img ] && [ ! -d system ]
+then
+
+  echo
+  echo "Found system.img"
+  mkdir ../temp_img
+  mv system.img ../temp_img
+
+  if [ -e boot.img ]
+  then
+    echo "Found boot.img"
+    mv boot.img ../temp_img
+  fi
+
+  if [ -e lib.img ]
+  then
+    echo "Found lib.img"
+    mv lib.img ../temp_img
+  fi
+
+  echo
+  rm -vf *
+  mv ../temp_img/* .
+  rmdir ../temp_img
+
+  cd ..
+  scripts/img_files_to_working_folder no_create $2
+  exit $?
+
+
+#
+# Check for Samsung Galaxy S2 stock ROM
+#
+elif [ -e factoryfs.img ]
+then
+  echo Found factoryfs.img
+
+  if [ -e hidden.img ]
+  then
+    echo "Found hidden.img"
+  else
+    echo "No hidden.img found"
+  fi
+
+  if [ -e cache.img ]
+  then
+    echo "Found cache.img"
+  else
+    echo "Warning: No cache.img found"
+  fi
+
+  if [ -e zImage ]
+  then
+    echo "Found zImage"
+    cd ..
+    scripts/show_rooted_kernel_msg
+    cd $build_dir
+  else
+    echo "Warning: No zImage found"
+  fi
+
+  cd ..
+  scripts/simg_files_to_working_folder no_create $2
+  exit $?
+
+
+#
+# Check for Samsung Galaxy S2 variants such as the Skyrocket
+#
+elif [ -e system.img.ext4 ] 
+then
+
+  echo
+  echo "Found system.img.ext4"
+  mkdir ../temp_img
+  mv system.img.ext4 ../temp_img
+
+  if [ -e boot.img ]
+  then
+    echo "Found boot.img"
+    mv boot.img ../temp_img
+  fi
+
+  if [ -e tomb.img.ext4 ]
+  then
+    echo "Found tomb.img.ext4"
+    mv tomb.img.ext4 ../temp_img
+  fi
+
+  if [ -e cache.img.ext4 ]
+  then
+    echo "Found cache.img.ext4"
+    mv cache.img.ext4 ../temp_img
+  fi
+
+  echo
+  rm -vf *
+  mv ../temp_img/* .
+  rmdir ../temp_img
+
+  cd ..
+  scripts/simg_ext4_files_to_working_folder no_create $2
+  exit $?
+
+
+
+#
+# Check for certain Samsung factory images
+#
+elif [ -e system.rfs ]
+then
+
+  cd ..
+  echo "Found system.rfs"
+  scripts/rfs_files_to_working_folder no_create $2
+  exit $?
+
+
+
+#
+# Check for Samsung Galaxy S2 Nandroid backup
+#
+elif [ -e system.ext4.tar ] 
+then
+
+  echo
+  echo "Found system.ext4.tar"
+  mkdir ../temp_img
+  mv system.ext4.tar ../temp_img
+
+  if [ -e boot.img ]
+  then
+    echo "Found boot.img"
+    mv boot.img ../temp_img
+  fi
+
+  echo
+  rm -vf *
+  mv ../temp_img/* .
+  rmdir ../temp_img
+
+  cd ..
+  scripts/sext4_tar_files_to_working_folder no_create $2
+  exit $?
+
+
+#
+# Check for Samsung Galaxy S stock ROM
+#
+elif [ -e factoryfs.rfs ]
+then
+  echo Found factoryfs.rfs
+
+  if [ -e cache.rfs ]
+  then
+    echo Found cache.rfs
+  fi
+
+  if [ -e zImage ]
+  then
+    echo "Found zImage"
+    cd ..
+    scripts/show_rooted_kernel_msg
+    cd $build_dir
+  else
+    echo "Warning: No zImage found"
+  fi
+
+  cd ..
+  scripts/rfs_files_to_working_folder no_create $2
+  exit $?
+
+#
+# Galaxy S again
+#
+elif [ -e PDA.tar ]
+then
+  echo Found PDA.tar
+
+  if [ -e CSC.tar ]
+  then
+    echo Found CSC.tar
+  else
+    echo "Warning: No CSC.tar found"
+  fi
+
+  if [ -e PHONE.tar ]
+  then
+    echo Found PHONE.tar
+  fi
+
+  if [ -e zImage ]
+  then
+    echo "Found zImage"
+  else
+    echo "Warning: No zImage found"
+  fi
+
+  cd ..
+  scripts/sgs_tar_files_to_working_folder no_create $2
+  exit $?
+
+#
+# Galaxy S yet again
+#
+elif [ -e PDA.tar.md5 ]
+then
+  echo Found PDA.tar.md5
+
+  if [ -e CSC.tar.md5 ]
+  then
+    echo Found CSC.tar.md5
+  else
+    echo "Warning: No CSC.tar.md5 found"
+  fi
+
+  if [ -e PHONE.tar.md5 ]
+  then
+    echo Found PHONE.tar.md5
+  fi
+
+  if [ -e zImage ]
+  then
+    echo "Found zImage"
+  else
+    echo "Warning: No zImage found"
+  fi
+
+  cd ..
+  scripts/sgs_tarmd5_files_to_working_folder no_create $2
+  exit $?
+fi
+
+
+
+
+if [ -d patch ]
+then
+
+  echo 
+  echo "Error: This is a ROM update, not a full ROM! Aborting."
+  cd ..
+  exit 1
+
+elif [ ! -d system ] && [ ! -d SYSTEM ]
+then
+
+  echo
+  echo "Error: No system folder found!"
+  cd ..
+  exit 1
+
+fi
+
+#
+# Check for NAND ROM - convert the boot folder to boot.img
+#
+if [ ! -e boot.img ]
+then
+  if [ -e boot/initrd.gz ] && [ -e boot/zImage ]
+  then
+    echo
+    echo "NAND ROM detected, converting boot folder to boot.img for"
+    echo "compatibility with kitchen (will be converted back when"
+    echo "ROM is built) ..."
+
+    cd ..
+    scripts/ensure_nand_extracted no_clear
+    scripts/build_boot_img
+    cd WORKING_*
+
+  #
+  # Leaked ROMs with partitions in folder format
+  # 
+  elif [ -e BOOT/kernel ] && [ -e BOOT/base ] && [ -e BOOT/cmdline ] && [ -d BOOT/RAMDISK ]
+  then
+    echo "Partitions are in folder format; BOOT folder will need to be"
+    echo "converted into a boot.img ..."
+   
+    cd ..
+    scripts/build_boot_img_from_folder_form
+    cd WORKING_*
+
+  else
+
+    #
+    # Check if ROM has no boot.img inside
+    #
+
+    build_dir=`pwd`
+    cd ..
+    scripts/check_no_bootimg $build_dir
+    cd $build_dir
+
+    if [ ! -e boot.img ]
+    then
+      echo "Error: No boot.img found, cannot continue"
+      echo
+      cd ..
+      echo "Removing $build_dir ..."
+      rm -rf $build_dir
+      echo
+      exit 1
+    fi
+  fi
+fi
+
+
+#
+# Remove bad symlinks (*.lnk)
+#
+if [ -d system/bin ]
+then
+  rm -fv system/bin/*.lnk
+fi
+
+if [ -d system/xbin ]
+then
+  rm -fv system/xbin/*.lnk
+fi
+
+
+if [ -d META-INF ]
+then
+  cd META-INF 
+  rm -f CERT.RSA CERT.SF MANIFEST.MF
+  cd ..
+else
+  echo
+  echo "Warning: No META-INF folder found under working folder!"
+fi
+
+
+cd ..
+echo
+
+if [ "$2" != "kernel_only" ] && [ "$2" != "name_given" ]
+then
+
+  scripts/check_no_update_script
+  error_code=$?
+
+  cd WORKING_*
+  cd META-INF/com/google/android
+
+
+  if [ -e updater-script ] && [ -e update-script ]
+  then
+    echo
+    echo "Warning: Both updater-script and update-script are found."
+    echo -n "Remove updater-script (y/n)? (default: y) "
+
+    read enterRemove
+    echo
+
+    if [ "$enterRemove" == "n" ]
+    then
+      echo "Keeping updater-script, but we must remove update-script"
+      rm -rf update-script
+
+      cd ../../../../..
+      scripts/check_no_update_script
+      error_code=$?
+
+      cd WORKING_*
+      cd META-INF/com/google/android
+
+    else 
+      echo "Removing updater-script"
+      rm -f updater-script
+    fi
+
+  fi
+  if [ -e update-binary ] && [ -e update-script ]
+  then
+    echo
+    echo "Warning: Both update-binary and update-script are found."
+    echo -n "Remove update-binary (y/n)? (default: y) "
+    read enterRemove
+    if [ "$enterRemove" != "n" ]
+    then
+      echo "Removing update-binary"
+      rm -f update-binary
+    else
+      echo "Not removing update-binary"
+    fi
+  fi
+
+
+  if [ -e update-script ]
+  then
+    
+    #
+    # Remove comments to prevent issues with kitchen
+    #
+    sed -i -e '/^#/d' update-script
+  fi
+
+  rm -f update-script.bak
+
+  cd ../../../../..
+
+  #
+  # Check for stuff related to stock recovery image
+  #
+  scripts/remove_recovery
+fi
+
+echo
+echo "Listing of META-INF/com/google/android:"
+
+cd WORKING_*
+cd META-INF/com/google/android
+ls -l 
+cd ../../../../..
+
+
+
+#
+# Completion
+#
+
+cd $build_dir
+
+echo
+echo Listing of $build_dir:
+ls -l 
+
+echo
+
+if [ -d system ]
+then
+  echo "Finished setting up working folder!"
+  cd ..
+
+  if [ "$error_code" == "1" ]
+  then
+    exit 1
+  else
+    exit 0
+  fi
+
+else
+  echo "Error: Setup failed"
+  cd ..
+  scripts/press_enter
+  exit 1
+fi
+
+cd ..
+

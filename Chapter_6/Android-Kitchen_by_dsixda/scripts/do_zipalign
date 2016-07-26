@@ -1,0 +1,169 @@
+############################################################################
+#
+# Copyright (c) 2011 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+#
+# This script has two optional arguments:
+# $1 = "for_build"
+# $2 = yes/no (ignore prompt) - relies on $1 being present, default=yes
+#
+
+
+if [ "$1" != "for_build" ]
+then
+  clear
+  echo
+
+  if [ -d WORKING_* ]
+  then
+    echo Found working folder
+  else
+    echo No working folder found!
+    exit 1
+  fi
+fi
+
+if [ `uname | grep CYGWIN` ]
+then
+  zipalign_file=zipalign.exe
+
+elif [ `uname | grep Linux` ]
+then
+  zipalign_file=zipalign
+
+elif [ `sw_vers | grep -o Mac` ]
+then
+  zipalign_file=zipalign.mac
+
+else
+  echo Error: Operating system not detected, cannot use zipalign
+  exit 1
+fi
+
+
+return_val=0
+
+if [ "$1" == "for_build" ]
+then
+
+  if [ "$2" == "no" ]
+  then
+    echo
+    echo -n "Would you like to optimize the APK files by zipaligning them (y/n)? (default: y): "
+    read do_zipalign
+  fi    
+
+else
+  clear
+
+  echo
+  echo "---------------------------------------------------------------"
+  echo  
+  echo "Zipalign is a procedure that will optimize all of the *.apk"
+  echo "files under your working folder for better RAM utilization."
+  echo
+  echo "NOTE: The option to zipalign all *.apk files will also be"
+  echo "provided when you build your ROM, so it is not necessary to"
+  echo "zipalign now."
+  echo 
+  echo "---------------------------------------------------------------"
+  echo
+
+  echo -n "Proceed with zipalign (y/n)? (default: y): "
+  read do_zipalign
+fi
+
+
+if [ "$do_zipalign" == "n" ]
+then
+  exit 0
+fi
+
+
+echo
+cd WORKING_*
+
+grep_cmd=`find . -type f | grep \\.apk$ | sort -f`
+
+name1=
+
+for filename in $grep_cmd
+do
+
+  #
+  # Handle spaces in file names
+  #
+  if [ "`echo $filename | grep .apk$`" == "" ]
+  then
+
+    if [ "$name1" == "" ]
+    then
+      name1=$filename
+    else
+      name1="$name1 $filename"
+    fi
+
+    continue
+
+  elif [ "$name1" != "" ]
+  then
+
+    # Replace space with underscore temporarily
+    name2=$filename
+    original_name="$name1 $name2"
+    filename=`echo $original_name | tr ' ' '_'`
+    mv "$name1 $name2" $filename
+    found_space=yes
+    echo "Zipaligning $original_name ..."
+
+  else
+    found_space=no
+    echo "Zipaligning $filename ..."
+  fi
+
+  new_file=$filename\_new
+  ../tools/zipalign_files/$zipalign_file 4 $filename $new_file
+
+  if [ -e $new_file ]
+  then
+
+    if [ "$found_space" == "yes" ]
+    then
+      mv -f $new_file "$name1 $name2"
+      rm -f $filename
+
+    else
+      mv -f $new_file $filename 
+    fi
+
+  else
+
+    return_val=1
+    echo "Error: Unable to zipalign, aborting"
+    if [ `uname | grep Linux` ]
+    then
+      echo "If you are using 64-bit Linux, ensure you installed package ia32-libs"
+    fi
+    break
+  fi
+
+  name1=
+
+done
+
+cd ..
+echo
+
+if [ "$return_val" == "0" ]
+then
+  echo "Finished zipaligning"
+fi
+
+exit $return_val
+

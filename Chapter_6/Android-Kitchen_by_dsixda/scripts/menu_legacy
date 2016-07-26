@@ -1,0 +1,66 @@
+############################################################################
+#
+# Copyright (c) 2012 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+#!/bin/bash
+ 
+version=$1
+
+while :
+do
+
+  clear
+
+  echo 
+  echo "============================================================"
+  echo " Android Kitchen $version - by dsixda (xda-developers.com)"
+  echo "============================================================"
+  echo
+  echo "> LEGACY OPTIONS"
+  echo
+  echo " 21 - Check update-script for errors"
+  echo " 22 - Add wireless tethering"
+  echo " 23 - Add task killer tweak for speed (stock ROM only)"
+  echo " 24 - Add Nano text editor + sysro/sysrw"
+  echo " 25 - Add Bash (command shell)"
+  echo " 26 - Add Apps2SD"
+  echo " 27 - Add custom boot animation functionality"
+  echo " 28 - Porting tools (experimental)"
+  echo
+  echo " 99 - Build ROM from working folder"
+  echo "  0 - BACK TO MAIN MENU"
+  echo
+  echo -n "Enter option: "
+  read opt
+
+  if [ "$opt" != "0" ]
+  then
+    scripts/check_multiple_working
+  fi
+
+  if [ "$?" != "1" ]
+  then
+    case $opt in
+      21) scripts/verify_update_script; continue;;
+      22) scripts/add_tether;;
+      23) scripts/task_killer;;
+      24) scripts/add_nano show_help;;
+      25) scripts/add_bash show_help;;
+      26) scripts/add_apps2sd show_help;;
+      27) scripts/add_custom_boot_anim;;
+      28) scripts/porting_tools; continue;;
+      99) scripts/build_rom;;
+      0) exit 1;;
+      *) echo "Invalid option"; continue;;
+    esac
+  fi
+
+  scripts/press_enter
+
+done

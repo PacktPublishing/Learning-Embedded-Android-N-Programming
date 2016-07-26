@@ -1,0 +1,349 @@
+############################################################################
+#
+# Copyright (c) 2011 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+
+scripts/extract_kernel_and_modules
+
+if [ -d MY_DEVICE_WORKING ]
+then
+  my_device=`scripts/get_build_prop_val ro.product.device MY_DEVICE_WORKING`
+  my_board=`scripts/get_build_prop_val ro.product.board MY_DEVICE_WORKING`
+  my_platform=`scripts/get_build_prop_val ro.board.platform MY_DEVICE_WORKING`
+
+  #
+  # Note: Don't delete MY_DEVICE_WORKING yet, it will be required later in this script
+  #
+fi
+
+if [ -d MY_KERNEL ] 
+then
+  echo
+  scripts/press_enter
+else
+  exit 1
+fi
+
+
+#
+# Now grab the donor ROM
+#
+
+clear
+echo
+echo "***************************************************************"
+echo 
+echo "--> Obtain a ROM that you want to port from ANOTHER DEVICE <--"
+echo
+echo "***************************************************************"
+
+scripts/check_rom no_info
+
+if [ -d WORKING_* ]
+then
+
+  scripts/press_enter
+
+  cd WORKING_*
+
+  if [ -d system ]
+  then
+
+    #
+    # Samsung Galaxy S2 or equivalent
+    #
+    if [ -e zImage ]
+    then
+      rm -f boot.img
+
+      cp ../tools/samsung_files/unpack-initramfs .
+      ./unpack-initramfs zImage
+   
+      if [ ! -d initramfs_root ]
+      then
+        echo "Error: Unable to unpack initramfs_root folder!"
+      else
+        mkdir ../BOOT-EXTRACTED
+        echo
+        mv -vf initramfs_root ../BOOT-EXTRACTED/boot.img-ramdisk
+      fi
+
+      rm -f kernel
+      rm -f zImage
+      rm -f unpack-initramfs
+
+      cd ..
+
+    elif [ -e boot.img ]
+    then
+      cd ..
+      scripts/ensure_boot_extracted
+    fi
+
+  else
+    cd ..
+    echo
+    echo "Quitting and cleaning up folders ..."
+
+    rm -rf MY_KERNEL
+    rm -rf MY_DEVICE_WORKING
+    exit 0
+  fi
+
+else
+  echo "You did not choose a ROM"
+  echo "Quitting and cleaning up folders ..."
+  rm -rf MY_KERNEL
+  rm -rf MY_DEVICE_WORKING
+  exit 0
+fi
+
+if [ ! -d BOOT-EXTRACTED ]
+then
+  echo "Error: BOOT-EXTRACTED folder not found"
+  exit 0
+fi
+
+
+
+clear
+echo
+echo "***************************************************************"
+echo 
+echo " PORTING YOUR ROM"
+echo
+echo "***************************************************************"
+
+#
+# Replace kernel, modify ramdisk and then build new boot.img
+#
+
+echo
+echo "Copying MY_KERNEL/zImage to BOOT-EXTRACTED folder"
+cp -f MY_KERNEL/zImage BOOT-EXTRACTED/
+
+
+echo
+echo "Copying MY_KERNEL/boot.img to the new working folder so that"
+echo "the correct base address can be determined before building"
+echo "the new boot.img."
+
+cd WORKING_*
+cp -f ../MY_KERNEL/boot.img .
+cd ..
+echo
+
+
+#
+# Rename *.rc files if required
+#
+
+board=`scripts/get_product_board`
+
+cd BOOT-EXTRACTED/boot.img-ramdisk
+file_list=`ls *.$board.rc 2>/dev/null`
+
+if [ "$file_list" == "" ]
+then
+ board=`ls init.*.rc | sed -e 's/init.goldfish.rc//g' -e 's/init.\([^.]*\).rc/\1/g' -e '/^$/d'`
+ file_list=`ls *.$board.rc 2>/dev/null`
+fi
+
+if [ "$file_list" != "" ]
+then
+  for rc_file in ${file_list[@]}
+  do
+    new_name=`echo $rc_file | sed -e 's/'"$board"'/'"$my_board"'/g'`
+
+    if [ "$rc_file" != "$new_name" ]
+    then
+      echo "Renaming ..."
+      mv -v $rc_file $new_name
+      echo
+    fi      
+  done
+fi
+
+
+#
+# Check if init.rc refers to busybox, and if the busybox binary is
+# found in the working folder
+# 
+if [ "`grep -o -m 1 busybox init.rc`" == "busybox" ]
+then
+  cd ../../WORKING_*
+  find_busybox=`find . -name busybox`
+  cd ..
+
+  if [ "$find_busybox" == "" ]
+  then
+    echo
+    echo "----------------------------------------------------------------------"
+    echo 
+    echo "WARNING:  The ramdisk's init.rc refers to busybox, but it is not found "
+    echo "          in the working folder.   If you build this ROM the way it is"
+    echo "          right now, it may not get past the boot screen on your device."
+    echo 
+    echo "          I found this:"
+    echo 
+    grep busybox BOOT-EXTRACTED/boot.img-ramdisk/init.rc
+    echo 
+    echo "Some tips:"
+    echo 
+    echo "- You may need to copy busybox to the folder referenced above. You can "
+    echo "  find the binary under the 'tools' folder."
+    echo "- Ensure your update-script file also has the following line or similar:"
+    echo "  set_perm 0 0 04755 SYSTEM:xbin/busybox"
+    echo "- You might still be missing some symlinks under /system/xbin"
+    echo ""
+    echo -n "Do you want the script to fix this for you (y/n)? (default: y): "
+    
+    read proceed_fix
+    if [ "$proceed_fix" != "n" ]
+    then
+      scripts/add_busybox
+    else
+      echo "No fix made" 
+    fi
+
+    echo
+    echo "When you are ready to build the boot.img, press Enter to continue ..."
+    read enterKey
+  fi
+
+else
+  cd ../..
+fi
+
+scripts/build_boot_img
+
+
+#
+# Set values in build.prop
+#
+
+if [ "$my_device" == "UNKNOWN" ]
+then
+  echo "WARNING: Won't modify ro.product.device in build.prop (device=UNKNOWN)"
+else
+  scripts/set_build_prop_val ro.product.device $my_device
+fi
+
+if [ "$my_board" == "UNKNOWN" ]
+then
+  echo "WARNING: Won't modify ro.product.board in build.prop (board=UNKNOWN)"
+else
+  scripts/set_build_prop_val ro.product.board $my_board
+fi
+
+if [ "$my_platform" == "UNKNOWN" ]
+then
+  echo "WARNING: Won't modify ro.board.platform in build.prop (platform=UNKNOWN)"
+else
+  scripts/set_build_prop_val ro.board.platform $my_platform
+fi  
+
+
+
+#
+# Copy module files to donor ROM
+#
+
+if [ -d MY_KERNEL/system ]
+then
+  cd WORKING_*
+  echo 
+  echo "Copying modules/drivers ..."
+  cp -rf ../MY_KERNEL/system/* system/
+  cd ..
+fi
+
+
+#
+# Copy the zImage by itself if it's a Galaxy S2 or equivalent
+#
+
+if [ -e tools/samsung_files/sgs_variants/$my_device ] || \
+    [ -e tools/samsung_files/sgs2_variants/$my_device ]
+then
+  echo 
+  echo "Copying zImage ..."
+  cp -vf MY_KERNEL/zImage WORKING_*/
+else
+  cd WORKING_*
+  rm -f modem.bin flash_image redbend_ua
+  cd ..
+fi
+
+
+#
+# We should not check or use the mount points in the original updater-script
+# when we convert the update-script back to updater-script, because they were 
+# only meant for the other device!!
+#
+
+cd WORKING_*
+
+if [ -d META-INF/com/google/android ]
+then
+
+  cd META-INF/com/google/android
+
+  if [ -e updater-script.orig ]
+  then
+    rm -f updater-script.orig
+  fi
+
+  if [ -e update-binary.orig ]
+  then
+    rm -f update-binary.orig
+  fi
+
+  #
+  # Use your device's original updater-script to assist with checking mount points later on
+  #
+  if [ -e ../../../../../MY_DEVICE_WORKING/META-INF/com/google/android/updater-script ]
+  then
+    cp ../../../../../MY_DEVICE_WORKING/META-INF/com/google/android/updater-script updater-script.orig
+  fi
+
+  cd ../../../..
+
+fi
+
+cd ..
+
+
+rm -rf MY_KERNEL
+rm -rf MY_DEVICE_WORKING
+
+
+
+echo
+echo "=============================================================="
+echo
+echo "If all went well, you should now have the ROM ported for your"
+echo "kitchen.  Make any necessary adjustments and then build the"
+echo "ROM when you are ready."
+echo
+echo "IMPORTANT"
+echo "---------"
+echo "If the new ROM has a size that is much greater than that of"
+echo "most ROMs for your device, you may need to remove some apps"
+echo "from the working folder so that the ROM can fit into the"
+echo "internal flash of your device.  Otherwise, your device MAY NOT"
+echo "BOOT."
+echo
+echo "If your device does not boot up after flashing a ported ROM"
+echo "built by the kitchen, then refer to the kitchen's FAQ to find"
+echo "out how to debug the issue by dumping the recovery log file"
+echo "and/or by doing a 'logcat'."
+echo 
+
+

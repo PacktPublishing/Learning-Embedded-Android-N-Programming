@@ -1,0 +1,162 @@
+############################################################################
+#
+# Copyright (c) 2012 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+
+clear
+echo
+echo "-----------------------------------------------------------------"
+echo 
+echo "This option will disable the 'noise' that plays whenever certain"
+echo "Android devices are turned on. This option may not be supported"
+echo "for your device."
+echo
+echo "-----------------------------------------------------------------"
+echo
+
+echo -n "Proceed with disabling boot screen sounds (y/n)? (default: y): "
+read do_disable
+
+if [ "$do_disable" == "n" ]
+then
+  exit 0
+fi
+
+echo
+
+if [ -d WORKING_* ]
+then
+  echo Working folder found
+else
+  echo Working folder not found, you will need to create one!
+  exit 0
+fi
+
+if [ -d WORKING_* ]
+then
+  cd WORKING_*
+else
+  exit 0
+fi
+
+
+xml_dir_list=( system/media system/media/bootscreen )
+found_xml=0
+
+for (( i=0 ; i < ${#xml_dir_list[@]}; i++ ))
+do
+
+  xml_dir=${xml_dir_list[$i]}
+
+  if [ -e $xml_dir/boot_animation.xml ]
+  then
+
+    found_xml=1
+    orig_dir=`pwd`
+    cd $xml_dir/
+
+    echo
+    echo "CURRENTLY IN $xml_dir/boot_animation.xml:"
+    grep useAudio boot_animation.xml
+    echo
+
+    if [ "`grep useAudio='"1"' boot_animation.xml`" == "" ]
+    then
+      echo Sound is already turned off, no need to change
+    else
+      echo Modifying boot_animation.xml ...
+      perl -pi -e 's/useAudio="1"/useAudio="0"/g' boot_animation.xml
+
+      echo
+      echo "CHANGED TO:"
+      grep useAudio boot_animation.xml
+    fi
+
+    if [ -e boot_animation.xml.bak ]
+    then
+      echo
+      echo "Removing boot_animation.xml.bak"  
+      rm boot_animation.xml.bak
+    fi
+
+    cd $orig_dir
+  fi
+done
+
+
+
+if [ $found_xml == 0 ]
+then
+
+  success=0
+
+  echo
+  echo "boot_animation.xml not found in this ROM"
+
+  file_list="\
+              data/local/android_media.mp3 \
+              data/local/android_audio.mp3 \
+              data/local/boot.mp3 \
+              data/local/SPC_animation_final.mp3 \
+              system/customize/resource/android_audio.mp3 \
+              system/customize/resource/android_media.mp3 \
+              system/customize/resource/boot.mp3 \
+              system/customize/resource/SPC_animation_final.mp3 \
+              system/etc/PowerOn.ogg \
+              system/etc/PowerOn.wav \
+              system/media/bootaudio.mp3 \
+              system/media/audio/ui/PowerOn.ogg \
+              system/media/audio/ui/PowerOff.ogg \
+              system/media/audio/ui/PowerOff.wav \
+              system/media/android_audio.mp3 \
+              system/media/android_media.mp3 \
+              system/media/droidhd.ogg \
+              system/media/SPC_animation_final.mp3 \
+              system/media/audio/poweron/poweron.mp3 \
+              system/sounds/lgeSounds/PowerOn.mp3 \
+             "
+
+  for snd in $file_list 
+  do
+
+    echo
+
+    if [ -e $snd ]
+    then
+      echo "--> Renaming /$snd"
+      mv $snd $snd.bak
+      success=1
+    elif [ -e $snd.bak ]
+    then
+      echo "--> Found $snd.bak (boot sound already disabled?)"
+      success=-1
+    else
+      echo "/$snd not found in this ROM"
+    fi
+  
+  done
+
+  echo
+  echo
+
+  if [ "$success" == "1" ]
+  then
+    echo "--> Boot sounds successfully disabled!"
+  elif [ "$success" == "-1" ]
+  then
+    echo "--> Nothing was changed"
+  else
+    echo "--> Unable to disable any boot sounds!"
+  fi
+
+  cd ..
+fi
+
+echo
+

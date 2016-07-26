@@ -1,0 +1,355 @@
+############################################################################
+#
+# Copyright (c) 2012 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+#
+# This script has three optional parameters:
+#
+# $1 = page size / kernel offset in boot.img (in decimal)
+# $2 = kernel base offset (in hexadecimal, e.g. 0x200000; needs $1 defined)
+# $3 = command line (needs $1 and $2 defined)
+#
+
+echo
+
+if [ -d BOOT-EXTRACTED ]
+then
+  echo Found BOOT-EXTRACTED folder, checking contents ...
+
+  if [ -d BOOT-EXTRACTED/boot.img-ramdisk ]
+  then
+    echo Found boot.img-ramdisk
+
+    if [ -e BOOT-EXTRACTED/zImage ]
+    then
+      echo Found zImage
+    else
+      echo Did not find BOOT-EXTRACTED/zImage
+      exit 0
+    fi
+
+  else
+    echo Did not find boot-extracted/boot.img-ramdisk folder!
+    exit 0
+  fi
+
+else
+  echo Did not find BOOT-EXTRACTED folder!
+  exit 0
+fi
+
+
+if [ -d WORKING_* ]
+then
+  echo Working folder found
+else
+  echo Working folder not found!
+  exit 0
+fi
+
+
+
+if [ "$1" == "" ]
+then
+
+  #
+  # Determine the kernel offset to be used in the new boot.img, 
+  # based on the current boot.img or /boot folder.
+  #
+
+  cd WORKING_*
+
+  if [ -e boot.img ] 
+  then
+   
+    cd ..
+    scripts/check_kernel_offset
+    res=$?
+
+    if [ "$res" != "0" ]
+    then
+      exit 0
+    fi
+
+  else
+
+    if [ ! -e boot/initrd.gz ] || [ ! -e boot/zImage ]
+    then
+      echo "boot.img not found under working folder!"
+      cd ..
+      exit 0
+    else
+
+      # Using a fake base address and command line to create the boot.img, since
+      # we don't have a boot.img and are using the NAND method; boot.img won't 
+      # be in final NAND ROM.
+
+      base=0x11800000     
+      cmd_line="dsixda NAND"
+
+      cd ..
+    fi
+  fi
+
+else
+
+  #
+  # Using hard-coded values 
+  #
+
+  scripts/set_kernel_offset_files $1
+
+  if [ "$2" != "" ]
+  then
+    base=$2
+    
+    if [ "$3" != "" ]
+    then
+      cmd_line=$3
+    fi
+  fi
+
+fi
+
+
+
+#
+# Check for MT65xx
+#
+
+cd WORKING_*
+working_folder=`pwd`
+cd ..
+dec_offset=`scripts/get_boot_img_page_size $working_folder`
+scripts/check_mt65xx_bootimg $working_folder $dec_offset 1>/dev/null
+mt65xx=$?
+
+
+
+#
+# Compile mkboot*
+#
+
+if [ "$mt65xx" == "1" ]
+then
+  mkbootimg_src=mkbootimg_mt65xx.c
+else
+  mkbootimg_src=mkbootimg.c
+fi
+mkbootimg_out=mkbootimg
+
+if [ `uname | grep CYGWIN` ]
+then
+  mkbootfs_file=mkbootfs.exe
+  mkbootimg_file=$mkbootimg_out.exe
+else
+  mkbootfs_file=mkbootfs
+  mkbootimg_file=$mkbootimg_out
+fi
+
+
+if [ -e tools/mkboot/$mkbootfs_file ]
+then
+  echo "Found $mkbootfs_file"
+else
+  echo
+  echo "Compiling mkbootfs ..."
+  cd tools/mkboot
+  gcc -o mkbootfs mkbootfs.c 2>/dev/null
+  cd ../..
+
+  if [ -e tools/mkboot/$mkbootfs_file ]
+  then
+    echo mkbootfs successfully compiled
+  else
+    echo "Error: mkbootfs not successfully compiled!"
+    exit 0   
+  fi
+fi
+
+
+if [ -e tools/mkboot/$mkbootimg_file ]
+then
+  rm -f $mkbootimg_file
+fi
+
+echo
+echo "Compiling mkbootimg ..."
+cd tools/mkboot
+gcc -c rsa.c
+gcc -c sha.c
+gcc rsa.o sha.o $mkbootimg_src -w -o $mkbootimg_out
+rm *.o
+cd ../..
+
+if [ -e tools/mkboot/$mkbootimg_file ]
+then
+  echo "$mkbootimg_out successfully compiled"
+else
+  echo "Error: $mkbootimg_out not successfully compiled!"
+  exit 0
+fi    
+
+
+cp tools/mkboot/$mkbootfs_file BOOT-EXTRACTED/
+cp tools/mkboot/$mkbootimg_file BOOT-EXTRACTED/
+cd BOOT-EXTRACTED
+
+
+#
+# Run mkbootfs
+#
+
+echo 
+echo "Creating ramdisk cpio archive ..."
+./$mkbootfs_file boot.img-ramdisk | gzip > ramdisk.gz
+
+
+
+
+cd ..
+cd WORKING_*
+
+if [ -e boot.img ]
+then
+
+  cd ..
+  echo
+
+  #
+  # Get original size of boot.img
+  #
+  size_orig=`scripts/get_boot_img_size`
+
+
+  #
+  # Determine kernel base address before running mkbootimg
+  #
+
+  if [ "$base" == "" ]
+  then
+    echo "Attempting to determine kernel base address ..."
+    base=`scripts/get_kernel_base_addr`
+  fi
+
+  echo "Using base address of $base"
+
+ 
+  #
+  # Determine ramdisk load address
+  #
+  ramdisk_addr=`scripts/get_ramdisk_addr`
+
+  echo "Using ramdisk load address of $ramdisk_addr"
+
+
+  #
+  # If no parameters entered, then find out the command line
+  #
+  # NOTE: Check the first two parameters to determine whether the user set the
+  # command line to an empty string intentionally
+  #
+  if [ "$3" == "" ]  && [ "$1" == "" ]
+  then
+    echo "Attempting to determine command line parameter ..."
+    cmd_line=`scripts/get_cmdline`
+  fi
+
+  if [ "$cmd_line" == "" ]
+  then
+    echo "No cmdline"
+  else
+    echo "Using cmdline: $cmd_line"
+  fi    
+
+else
+  cd ..
+fi  
+
+
+#################################################
+#
+# Run mkbootimg to build new boot.img
+#
+#################################################
+
+cd BOOT-EXTRACTED
+
+echo
+echo "Building new boot.img ..."
+
+ramdisk_params=""
+if [ "$ramdisk_addr" != "" ]
+then
+  ramdisk_params="--ramdiskaddr $ramdisk_addr"
+fi
+
+if [ "$cmd_line" == "" ]
+then
+  ./$mkbootimg_file --kernel zImage --ramdisk ramdisk.gz -o newBoot.img --base $base $ramdisk_params
+else
+  ./$mkbootimg_file --kernel zImage --ramdisk ramdisk.gz --cmdline "$cmd_line" -o newBoot.img --base $base $ramdisk_params
+fi
+
+
+if [ -e newBoot.img ]
+then
+  echo
+  echo "newBoot.img created"
+
+  echo "Moving to working folder as boot.img"
+  cd ../WORKING_*
+  mv -f ../BOOT-EXTRACTED/newBoot.img boot.img
+
+  if [ "$size_orig" != "" ]
+  then
+
+    #
+    # Get new size of boot.img
+    #
+    cd ..
+    size_new=`scripts/get_boot_img_size`
+    cd WORKING_*
+
+    if [ "$size_new" != "" ]
+    then
+      echo
+      echo "boot.img size"
+      echo "Old: $size_orig"
+      echo "New: $size_new"
+    fi
+  fi
+
+  if [ -d boot ] && [ -e boot/initrd.gz ] && [ -e boot/zImage ]
+  then
+    echo
+    echo "Removing NAND boot folder ..."
+    rm -rf boot
+  fi
+
+  cd ..
+    
+  echo
+  echo "Removing BOOT-EXTRACTED folder ..."
+  rm -rf BOOT-EXTRACTED
+  
+  exit_code=1
+
+else
+  echo
+  echo "newBoot.img not created!"
+
+  rm $mkbootfs_file
+  rm $mkbootimg_file
+
+  cd ..
+  exit_code=0
+fi
+
+exit $exit_code

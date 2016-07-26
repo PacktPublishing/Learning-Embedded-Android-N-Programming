@@ -1,0 +1,665 @@
+############################################################################
+#
+# Copyright (c) 2012 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+
+if [ "$1" == "" ]
+then
+  clear
+fi
+
+echo
+
+base_dir=`pwd`
+
+if [ -d WORKING_* ]
+then
+
+  cd WORKING_*
+  working_dir=`pwd`
+
+  cd META-INF/com/google/android
+
+else
+  echo
+  echo Working folder not found, you will need to create one!
+  exit 0
+fi
+
+
+if [ "$1" == "" ]
+then
+
+  echo "Conversion Tool: updater-script (Edify) to update-script (Amend)"
+  echo "--------------------------------------------------------------------"
+  echo
+  echo "This script will convert your updater-script into an update-script."
+  echo
+  echo "Ensure you have an updater-script under META-INF/com/google/android"
+  echo "of your working folder."
+  echo
+  echo -n "Proceed with conversion (y/n)? (default: y): "
+
+  read proceed_now
+  echo
+
+  if [ "$proceed_now" == "n" ] 
+  then
+    cd ../../../../..
+    exit 0
+  fi
+
+  echo "--------------------------------------------------------------------"
+  echo
+
+fi
+
+if [ -e updater-script ]
+then
+  
+  if [ -e update-script ]
+  then
+    echo "Error: Although you have an updater-script, you also have an update-"
+    echo "       script in the same folder. Remove one of them."
+    echo
+
+    echo -n "Remove update-script and continue conversion (y/n)? (default: y) "
+    read remove_it
+    echo
+    if [ "$remove_it" != "n" ]
+    then
+      rm -vf update-script
+      echo
+      echo
+      echo "--------------------------------------------------------------------"
+      echo
+
+    else
+      cd ../../../../..
+      exit 0
+    fi
+  fi
+
+else
+  echo "Error: updater-script not found!"
+  cd ../../../../..
+  exit 0
+fi
+
+
+
+
+echo "Converting to update-script, please wait ..."
+echo
+
+
+# If there is no mount point definitions for this device in the
+# tools/edify_defs folder, create a basic one based on the 
+# updater-script contents
+cd ../../../../..
+scripts/create_edify_def
+
+cd WORKING_*
+cd META-INF/com/google/android
+
+
+echo "- Initial formatting ..."
+
+# The 'strings' command is used in case the ui_print statement has special symbols in it
+more updater-script \
+  | sed -e ':a;N;$!ba;s/([ ]*\n/(/g' \
+  | sed -e ':a;N;$!ba;s/\n[ ]*\&\&/ \&\&/g' \
+  | sed -e ':a;N;$!ba;s/\n[ ]*||/ ||/g' \
+  | sed -e ':a;N;$!ba;s/\n);/);/g' \
+  | strings \
+  | sed -e ':a;N;$!ba;s/ui_print("[^"]*");//g' \
+  | sed -e ':a;N;$!ba;s/||[ ]*\n//g' \
+  | sed -e ':a;N;$!ba;s/,[ ]*\n//g' \
+  | sed -e 's/","/", "/g' \
+        -e 's/\([0-9]*\),[ ]*\([0-9]*\)/\1, \2/g' \
+        -e 's/^\([a-zA-Z_]*\)[ ]*(/\1(/g' \
+> temp.log
+
+
+#
+# Replace tabs with spaces!
+#
+tr '\011' ' ' <temp.log >temp.log.new
+mv -f temp.log.new temp.log
+
+
+#
+# Remove comments
+#
+sed -i -e '/^#/d' temp.log
+
+
+#
+# Some updater-scripts use alternatives to the regular mount/unmount commands
+#
+sed -i -e '/^run_program("\/sbin\/mount"/d' temp.log
+sed -i -e '/^run_program("\/sbin\/umount"/d' temp.log
+sed -i -e '/^run_program("\/sbin\/busybox", "mount"/d' temp.log
+sed -i -e '/^run_program("\/sbin\/busybox", "umount"/d' temp.log
+
+
+#
+# For Samsung Galaxy S/S2 and equivalent
+#
+if [ -e ../../../../zImage ] && [ `grep -c boot.img temp.log` == 0 ]
+then
+  sed -i \
+    -e '/zImage"/d' \
+    -e '/flash_image"/d' \
+    -e '/redbend_ua"/d' \
+    temp.log
+
+  echo "flash_zimage" >> temp.log
+fi
+
+if [ -e ../../../../modem.bin ]
+then
+  sed -i \
+    -e '/modem.bin"/d' \
+    -e '/flash_image"/d' \
+    -e '/redbend_ua"/d' \
+    temp.log
+
+  echo "flash_modem" >> temp.log
+fi
+
+
+
+#
+# assert
+#
+echo "- assert ..."
+line_num=`sed -n -e '/assert(/{=;q}' temp.log`
+
+while [ "$line_num" != "" ]
+do
+  sed -i \
+    -e ''$line_num' s/assert(\(.*\)").*);/\1");/g' \
+    -e ''$line_num' s/^.*getprop.*;//g' \
+    temp.log
+
+  if [ -e ../../../../radio.img ]
+  then
+    sed -i -e ''$line_mum' s/^.*install_radio.*;/write_radio_image PACKAGE:radio.img/g' temp.log
+  else
+    sed -i -e ''$line_num' s/^.*install_radio.*;//g' temp.log
+  fi
+
+  if [ -e ../../../../hboot.img ]
+  then
+    sed -i -e ''$line_mum' s/^.*install_hboot.*;/write_hboot_image PACKAGE:hboot.img/g' temp.log
+  else
+    sed -i -e ''$line_num' s/^.*install_hboot.*;//g' temp.log
+  fi
+
+  sed -i \
+    -e ''$line_num' s/)[ ]*/);\n/g' \
+    -e 's/^;$//g' \
+    temp.log
+
+  line_num=`sed -n -e '/assert(/{=;q}' temp.log`
+done
+
+
+#
+# Fix the mess left over sometimes by the assert statement
+#
+sed -i \
+  -e 's/^==[ ]*\(.*$\)/\1/g' \
+  -e 's/^||[ ]*\(.*$\)/\1/g' \
+  -e 's/^&&[ ]*\(.*$\)/\1/g' \
+  -e 's/^[^a-z]*\([a-z]*\)/\1/g' \
+  -e '/^ui_print/d' \
+  temp.log
+
+
+
+#
+# boot.img / radio.img / bootloader.img
+#
+echo "- write_raw_image ..."
+
+img_list=( boot radio bootloader )
+temp_list=( tmp cache )
+
+
+for (( t = 0 ; t < ${#temp_list[@]} ; t++ ))
+do
+
+  temp_name=${temp_list[${t}]}
+
+  for (( i = 0 ; i < ${#img_list[@]} ; i++ ))
+  do
+
+    #
+    # Replace 3 consecutive lines if they match the required strings
+    #
+
+    img_name=${img_list[${i}]}
+
+    if [ -e ../../../../$img_name.img ]
+    then
+      sed -i -e ':a;N;$!ba;s/package_extract_file("'"$img_name"'.img", "\/'"$temp_name"'\/'"$img_name"'.img");\n[ ]*write_raw_image("\/'"$temp_name"'\/'"$img_name"'.img", "[^"]*");\n[ ]*delete("\/'"$temp_name"'\/'"$img_name"'.img");/write_raw_image PACKAGE:'"$img_name"'.img/g' temp.log
+    else
+      sed -i -e ':a;N;$!ba;s/package_extract_file("'"$img_name"'.img", "\/'"$temp_name"'\/'"$img_name"'.img");\n[ ]*write_raw_image("\/'"$temp_name"'\/'"$img_name"'.img", "[^"]*");\n[ ]*delete("\/'"$temp_name"'\/'"$img_name"'.img");//g' temp.log
+    fi
+
+  done
+done
+
+sed -i -e 's/write_raw_image("boot.img", "boot");/write_raw_image PACKAGE:boot.img BOOT:/g' temp.log
+sed -i -e 's/write_raw_image PACKAGE:boot.img$/write_raw_image PACKAGE:boot.img BOOT:/g' temp.log
+
+
+#
+# Dell Streak
+#
+if [ -e ../../../../boot.img ]
+then
+  sed -i -e ':a;N;$!ba;s/package_extract_file("boot.img", "\/tmp\/boot.img");\n[ ]*write_boot_raw_image("\/tmp\/boot.img", "boot");\n[ ]*delete("\/tmp\/boot.img");/write_raw_image PACKAGE:boot.img BOOT:/g' temp.log
+else
+  sed -i -e ':a;N;$!ba;s/package_extract_file("boot.img", "\/tmp\/boot.img");\n[ ]*write_boot_raw_image("\/tmp\/boot.img", "boot");\n[ ]*delete("\/tmp\/boot.img");//g' temp.log
+fi
+if [ -e ../../../../blob ]
+then
+  sed -i -e ':a;N;$!ba;s/package_extract_file("blob", "\/tmp\/blob");\n[ ]*write_blob_raw_image("\/tmp\/blob", "staging");\n[ ]*delete("\/tmp\/blob");/write_blob_raw_image PACKAGE:blob/g' temp.log
+else
+  sed -i -e ':a;N;$!ba;s/package_extract_file("blob", "\/tmp\/blob");\n[ ]*write_blob_raw_image("\/tmp\/blob", "staging");\n[ ]*delete("\/tmp\/blob");//g' temp.log
+fi
+
+
+
+#
+# run_program
+#
+echo "- run_program ..."
+line_num=`sed -n -e '/run_program(/{=;q}' temp.log`
+
+while [ "$line_num" != "" ]
+do
+
+  # run_program spans multiple lines
+  has_end=`sed -n -e ''$line_num'p' temp.log | grep -c "\");[ ]*$"`
+  
+  # Combine the next line
+  while [ $has_end == 0 ]
+  do
+    # N = read next line
+    sed -i -e ''$line_num'N;s/\n/[cr]/g' temp.log
+
+    has_end=`sed -n -e ''$line_num'p' temp.log | grep -c "\");[ ]*$"`
+  done
+
+  sed -i \
+    -e ''$line_num' s/ /\[sp\]/g' \
+    -e ''$line_num' s/",\[sp\]"/ /g' \
+    -e ''$line_num' s/,/\[co\]/g' \
+    -e ''$line_num' s/run_program("/run_program /g' \
+    -e ''$line_num' s/run_program \/\([a-zA-Z]*\)/run_program PACKAGE:\1/g' \
+    -e ''$line_num' s/run_program PACKAGE:\//run_program \//g' \
+    -e ''$line_num' s/);//g' \
+    -e ''$line_num' s/;/\[sc\]/g' \
+    temp.log
+
+  line_num=`sed -n -e '/run_program(/{=;q}' temp.log`
+done
+
+
+
+#
+# delete
+#
+echo "- delete ..."
+line_num=`sed -n -e '/delete(/{=;q}' temp.log`
+
+while [ "$line_num" != "" ]
+do
+  sed -i \
+    -e ''$line_num' s/delete(/delete /g' \
+    -e ''$line_num' s/"//g' \
+    -e ''$line_num' s/, /\ndelete /g' \
+    -e ''$line_num' s/)//g' \
+    -e ''$line_num' s/;//g' \
+    temp.log
+
+  line_num=`sed -n -e '/delete(/{=;q}' temp.log`
+done
+
+
+#
+# Remove apply_patch
+#
+sed -i -e 's/apply_patch.*[;]//g' temp.log
+
+
+
+
+#
+# symlink
+#
+echo "- symlink ..."
+
+# If the symlink command consists of only target file, then use this
+sed -i -e 's/symlink("\([^\"]*\)", "\([^\"]*\)");/symlink \1 \2/g' temp.log
+
+line_num=`sed -n -e '/symlink(/{=;q}' temp.log`
+
+while [ "$line_num" != "" ]
+do
+
+  cp -f temp.log temp.log.old
+
+  src=`sed -ne ''$line_num' s/symlink("\([^"]*\)".*/\1/pg' temp.log`
+
+  # Fix sed issue where backslashes in $src are misinterpreted as part of the sed syntax 
+  # rather than the string
+  src=`echo $src | sed -e 's/\//dsixda_slash/g'`
+
+  # sed1 : The formatting code near the top of this conversion script may have removed some commas
+  # sed2 : All targets will be moved to their own line
+  # sed3 : Substitute back the backslashes, if any
+  # sed4 : Fix up last line of symlink set
+  sed -i \
+    -e ''$line_num' s/"[ ]*"/", "/g' \
+    -e ''$line_num' s/", [ ]*"/\nsymlink '"$src"' /g' \
+    -e ''$line_num' s/dsixda_slash/\//g' \
+    -e ''$line_num' s/");//g' \
+  temp.log 
+
+  # No longer need first line after all targets moved to other lines
+  sed -i -e ''$line_num'd' temp.log
+
+  #
+  # Ensure we are not stuck in an endless loop doing nothing
+  #
+  if [ "`diff temp.log temp.log.old`" == "" ]
+  then
+    echo
+    echo "ERROR: Problem converting symlinks"
+    rm -f temp.log.old temp.log
+    exit 1
+  fi
+
+  line_num=`sed -n -e '/symlink(/{=;q}' temp.log`
+
+done
+
+rm -rf temp.log.old
+
+
+
+
+echo "- Final formatting ..."
+
+#
+# Fix up the update-script 
+#
+sed -i \
+  -e 's/;//g' \
+  -e 's/,//g' \
+  -e 's/(/ /g' \
+  -e 's/)//g' \
+  -e 's/^mount .*//g' \
+  -e 's/^unmount .*//g' \
+  -e 's/package_extract_dir \"\([^ ]*\)/copy_dir PACKAGE:\1/g' \
+  \
+  -e 's/\/system\//SYSTEM:/g' \
+  -e 's/ \/system/ SYSTEM:/g' \
+  -e 's/"\/system"/SYSTEM:/g' \
+  -e 's/\"system\"/SYSTEM:/g' \
+  -e 's/\"SYSTEM:\"/SYSTEM:/g' \
+  -e 's/\" SYSTEM/ SYSTEM/g' \
+  -e 's/\"SYSTEM:\([^\"]*\)\"/SYSTEM:\1/g' \
+  -e 's/symlink SYSTEM:/symlink \/system\//g' \
+  \
+  -e 's/\/preload\//PRELOAD:/g' \
+  -e 's/ \/preload/ PRELOAD:/g' \
+  -e 's/"\/preload"/PRELOAD:/g' \
+  -e 's/\"preload\"/PRELOAD:/g' \
+  -e 's/\"PRELOAD:\"/PRELOAD:/g' \
+  -e 's/\" PRELOAD/ PRELOAD/g' \
+  -e 's/\"PRELOAD:\([^\"]*\)\"/PRELOAD:\1/g' \
+  -e 's/symlink PRELOAD:/symlink \/preload\//g' \
+  \
+  -e 's/\/tmp\//TMP:/g' \
+  -e 's/ \/tmp/ TMP:/g' \
+  -e 's/"\/tmp"/TMP:/g' \
+  -e 's/\"tmp\"/TMP:/g' \
+  -e 's/\"TMP:\"/TMP:/g' \
+  -e 's/\" TMP/ TMP/g' \
+  -e 's/ \"TMP:/ TMP:/g' \
+  \
+  -e 's/\/data\//DATA:/g' \
+  -e 's/ \/data/ DATA:/g' \
+  -e 's/"\/data"/DATA:/g' \
+  -e 's/\"data\"/DATA:/g' \
+  -e 's/\"DATA:\"/DATA:/g' \
+  -e 's/\" DATA/ DATA/g' \
+  -e 's/"userdata"/DATA:/g' \
+  -e 's/\"DATA:\([^\"]*\)\"/DATA:\1/g' \
+  -e 's/symlink DATA:/symlink \/data\//g' \
+  \
+  -e 's/\/sdcard\//SDCARD:/g' \
+  -e 's/ \/sdcard/ SDCARD:/g' \
+  -e 's/"\/sdcard"/SDCARD:/g' \
+  -e 's/\"sdcard\"/SDCARD:/g' \
+  -e 's/\"SDCARD:\"/SDCARD:/g' \
+  -e 's/\" SDCARD/ SDCARD/g' \
+  \
+  -e 's/\/cache\//CACHE:/g' \
+  -e 's/ \/cache/ CACHE:/g' \
+  -e 's/"\/cache"/CACHE:/g' \
+  -e 's/\"cache\"/CACHE:/g' \
+  -e 's/\"CACHE:\"/CACHE:/g' \
+  -e 's/\" CACHE/ CACHE/g' \
+  \
+  -e 's/\/sdext\//SDEXT:/g' \
+  -e 's/ \/sdext/ SDEXT:/g' \
+  -e 's/"\/sdext"/SDEXT:/g' \
+  -e 's/\"sdext\"/SDEXT:/g' \
+  -e 's/\"SDEXT:\"/SDEXT:/g' \
+  -e 's/\" SDEXT/ SDEXT/g' \
+  \
+  -e 's/"\/boot\//BOOT:/g' \
+  -e 's/"\/boot/BOOT:/g' \
+  -e 's/ \/boot\// BOOT:/g' \
+  -e 's/"\/boot"/BOOT:/g' \
+  -e 's/\"boot\"/BOOT:/g' \
+  -e 's/\"BOOT:\"/BOOT:/g' \
+  -e 's/\" BOOT/ BOOT/g' \
+  \
+  -e 's/\"MTD //g' \
+  -e 's/set_perm\([^\"]*\)\"\([^\"]*\)\"/set_perm\1\2/g' \
+  -e 's/\"\([^\"]*\)\"/\1/g' \
+  -e 's/^[ \t]*//g' \
+  -e 's/\/$//g' \
+  -e 's/"$/\n/g' \
+temp.log
+
+
+
+#
+# Patch up any conversion issues here
+#
+
+sed -i \
+  -e 's/MTD //g' \
+  -e 's/ system\// SYSTEM:/g' \
+  -e 's/ preload\// PRELOAD:/g' \
+  -e 's/ tmp\// TMP:/g' \
+  -e 's/ data\// DATA:/g' \
+  -e 's/ sdcard\// SDCARD:/g' \
+  -e 's/ cache\// CACHE:/g' \
+  -e 's/ sdext\// SDEXT:/g' \
+  -e 's/ boot\// BOOT:/g' \
+  -e 's/\(symlink [^ ]*\)SYSTEM:/\1\/system\//g' \
+  -e 's/\(symlink [^ ]*\)PRELOAD:/\1\/preload\//g' \
+  -e 's/\(symlink [^ ]*\)DATA:/\1\/data\//g' \
+  -e 's/\(symlink [^ ]*\)CACHE:/\1\/cache\//g' \
+  -e 's/\(symlink [^ ]*\)TMP:/\1\/tmp\//g' \
+  -e 's/\(symlink [^ ]*\)SDCARD:/\1\/sdcard\//g' \
+  -e 's/\(symlink [^ ]*\)SDEXT:/\1\/sdext\//g' \
+  -e 's/\(symlink [^ ]*\)BOOT:/\1\/boot\//g' \
+  -e 's/\(set_perm.*\/.*\)SYSTEM:/\1\/system\//g' \
+  -e 's/\(set_perm.*\/.*\)PRELOAD:/\1\/preload\//g' \
+  -e 's/\(set_perm.*\/.*\)DATA:/\1\/data\//g' \
+  -e 's/\(set_perm.*\/.*\)CACHE:/\1\/cache\//g' \
+  -e 's/\(set_perm.*\/.*\)TMP:/\1\/tmp\//g' \
+  -e 's/\(set_perm.*\/.*\)SDCARD:/\1\/sdcard\//g' \
+  -e 's/\(set_perm.*\/.*\)SDEXT:/\1\/sdext\//g' \
+  -e 's/\(set_perm.*\/.*\)BOOT:/\1\/boot\//g' \
+  -e 's/\(package_extract_file\) SYSTEM:/\1 system\//g' \
+  -e 's/\(package_extract_file\) PRELOAD:/\1 preload\//g' \
+  -e 's/\(package_extract_file\) DATA:/\1 data\//g' \
+  -e 's/\(package_extract_file\) CACHE:/\1 cache\//g' \
+  -e 's/\(package_extract_file\) TMP:/\1 tmp\//g' \
+  -e 's/\(package_extract_file\) SDCARD:/\1 sdcard\//g' \
+  -e 's/\(package_extract_file\) SDEXT:/\1 sdext\//g' \
+  -e 's/\(package_extract_file\) BOOT:/\1 boot\//g' \
+  -e 's/^format[ ]*\([^ ]*\)[ ]*\(.*\)/format \1 \2/g' \
+temp.log
+
+
+#
+# Remove blank lines
+#
+sed -i -e '/^$/d' temp.log
+
+
+#
+# Replace the 3 consecutive lines created in updater-script when a script from the
+# *base directory* of ROM is used in run_program.  
+#
+# e.g.
+#
+#   package_extract_file("backuptool.sh", "/tmp/backuptool.sh");
+#   set_perm(0, 0, 0777, "/tmp/backuptool.sh");
+#   run_program("/tmp/backuptool.sh", "backup");
+#
+# (Ensure there are no blank lines in file)
+#
+
+line_list=`grep -n package_extract_file temp.log`
+line_num_list=`echo "$line_list" | sed -e 's/\([0-9]*\).*/\1/g'`
+
+# Increase this if the lines are changed
+move_lines=0
+
+for line_num in $line_num_list
+do
+
+  line_num1=$(($line_num-$move_lines))
+
+  curr_line=`sed -n -e ''$line_num1'p' temp.log`
+  src=`echo "$curr_line" | sed -e 's/package_extract_file \(.*\) .*/\1/'`
+
+  test_src=`echo "$src" | grep -c "/"`
+  if [ $test_src == 1 ]
+  then
+    continue
+  else 
+    sed -i -e ''$line_num1' s/\(package_extract_file \)\(.*\) /\1PACKAGE:\2 /g' temp.log
+  fi  
+
+  partition=`echo "$curr_line" | sed -e 's/package_extract_file .* \([^:]*\):\(.*\)/\1/'`
+  filename=`echo "$curr_line" | sed -n -e ''$line_num1'p' temp.log | sed -e 's/package_extract_file .* \([^:]*\):\(.*\)/\2/'`
+
+  if [ "$partition" == "TMP" ] || [ "$partition" == "CACHE" ]
+  then
+  
+    line_num2=$(($line_num1+1))
+    expect_line2="set_perm 0 0 0777 $partition:$filename"
+    actual_line2=`sed -n -e ''$line_num2'p' temp.log`
+
+    if [ "$actual_line2" == "$expect_line2" ]
+    then
+      line_num3=$(($line_num2+1))
+      small_partition=`echo $partition | sed 's/\([A-Z]*\)/\L\1/g'`
+      expect_line3="run_program PACKAGE:$small_partition/$filename"
+      actual_line3=`sed -n -e ''$line_num3'p' temp.log`
+
+      res=`echo $actual_line3 | grep -c "$expect_line3"`
+      if [ $res == 1 ]
+      then
+        sed -i -e ''"$line_num1"','"$line_num2"'d' temp.log
+        sed -i -e ''$line_num1' s/run_program PACKAGE:'"$small_partition"'\/\(.*\)/run_program PACKAGE:\1/g' temp.log
+
+        move_lines=$(($move_lines+2))
+      fi
+    fi
+  fi
+done
+
+
+
+#
+# Finished
+#
+
+mv -f temp.log update-script
+rm -f temp.log.old
+
+
+#
+# Device-specific mount points
+#
+cd ../../../../..
+scripts/adjust_mnt update-script
+cd WORKING_*
+cd META-INF/com/google/android
+
+
+
+echo
+
+if [ -e update-script ]
+then
+
+  mv -f updater-script updater-script.orig
+
+  echo "--------------------------------------------------------------------"
+  echo
+  echo "An update-script has been created under META-INF/com/google/android"
+  echo "of your working folder.  Please review it for potential errors."
+  echo ""
+  echo "The original updater-script has been renamed to updater-script.orig."
+  echo "It will not be included in your completed ROM's ZIP file, but please"
+  echo "DO NOT remove it, as it may be required by the kitchen." 
+  echo
+
+  if [ -e update-binary ]
+  then
+    mv -f update-binary update-binary.orig
+    echo "The update-binary has also been renamed to update-binary.orig."
+  fi
+
+  cd $base_dir
+  scripts/update_script_should_convert_back
+
+  if [ "$?" == "1" ]
+  then
+    echo
+    echo "NOTE: Because we cannot fully convert Edify syntax into Amend"
+    echo "      format, this update-script will automatically be converted"
+    echo "      back to an updater-script in the final ROM's update.zip."
+    echo "      However, your working folder will still contain the update-"
+    echo "      script."
+    echo
+  fi
+
+else
+  echo "Error: update-script not created!"
+fi
+
+cd $base_dir

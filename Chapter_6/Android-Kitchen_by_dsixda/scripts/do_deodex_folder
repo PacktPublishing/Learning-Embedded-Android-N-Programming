@@ -1,0 +1,210 @@
+############################################################################
+#
+# Copyright (c) 2013 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+#
+# This script has two parameters:
+#
+# $1 = folder(s) to deodex under /system (mandatory)
+#       e.g. framework
+#       e.g. "framework app" 
+# $2 = whether to enable logging (y or n) (optional) 
+#
+
+dir_list=$1
+do_log=$2
+
+if [ "$dir_list" == "" ]
+then
+  echo "No folders for deodexing specified!"
+  exit 0
+fi
+
+base_dir=`pwd`
+api_level=`scripts/get_api_level`
+
+cd WORKING_*
+
+num_odex_fr=`find system/framework | grep -c "\.odex$"`
+num_odex_app=`find system/app | grep -c "\.odex$"`
+
+
+#
+# Create log file
+#
+
+if [ "$do_log" == "" ]
+then
+  echo
+  echo -n "Enable logging to file (y/n)? (default: y): "
+  read do_log
+fi
+
+if [ "$do_log" != "n" ]
+then
+  do_log=y
+else
+  do_log=n
+fi
+
+date_str=`date '+%m%d%y_%H%M%S'`
+log_file=deodex_$date_str.log
+
+cd ..
+version=`scripts/get_smali_version`
+cd WORKING_*
+
+if [ "$do_log" == "y" ]
+then
+  echo
+  echo "Creating log file $log_file ..."
+
+  echo "" >> ../$log_file
+  echo "smali/baksmali version: $version" >> ../$log_file
+fi
+
+#
+# Go through each folder specified
+#
+
+for folder in ${dir_list[@]}
+do
+
+  if [ "$do_log" == "y" ]
+  then
+    echo "" >> ../$log_file
+    echo "Folder: $folder" >> ../$log_file
+    echo "-------------------" >> ../$log_file
+  fi
+
+  if [ $folder == framework ]
+  then
+    num_odex_folder=$num_odex_fr
+  elif [ $folder == app ]
+  then
+    num_odex_folder=$num_odex_app
+  else
+    echo
+    echo "Error: Folder $folder not valid!"
+
+    if [ "$do_log" == "y" ]
+    then
+      echo "Invalid folder" >> ../$log_file
+    fi
+
+    continue
+  fi
+
+  count=0
+  found_error=0
+  path=system/$folder
+
+  echo
+  echo
+  echo "Going into $path ..."
+  echo
+
+  cd $path
+
+  grep_cmd=`find . | grep "\.odex$" | sed 's/.\///g' | sort -f`
+
+  if [ "$grep_cmd" == "" ]
+  then
+    echo "Nothing found under $path!"
+
+    if [ "$do_log" == "y" ]
+    then
+      echo "Nothing here" >> ../../../$log_file
+    fi
+
+  else
+
+    #
+    # Finally, deodex each file
+    #
+    cp -f ../../../tools/deodex_files/baksmali-$version.jar baksmali.jar
+    cp -f ../../../tools/deodex_files/smali-$version.jar smali.jar
+
+    for odex_file in $grep_cmd
+    do
+
+      count=$(($count+1))
+      echo
+      echo "NOW AT FILE $count OF $num_odex_folder IN $path: $odex_file"
+
+      while [ -e $odex_file ]
+      do
+
+        ../../../scripts/do_deodex_file $api_level $odex_file ../framework
+        
+        if [ -e $odex_file ]
+        then
+         
+          if [ -e $odex_file ] 
+          then
+
+            echo "ERROR: Aborting $odex_file"
+            found_error=1
+            
+            if [ "$do_log" == "y" ]
+            then
+              echo "* ERROR: Aborting $odex_file!" >> ../../../$log_file
+            fi
+
+            break
+
+          elif [ ! -e $odex_file ]
+          then
+            if [ "$do_log" == "y" ]
+            then
+              echo "$odex_file successfully deodexed" >> ../../../$log_file
+            fi
+
+            break
+          fi
+
+        else
+          if [ "$do_log" == "y" ]
+          then
+            echo "$odex_file successfully deodexed" >> ../../../$log_file
+          fi
+        fi
+      done
+
+    done
+
+    rm -f baksmali.jar
+    rm -f smali.jar
+
+    echo
+    echo "Finished $path"
+
+    if [ "$found_error" == "1" ]
+    then
+      echo
+      echo "WARNING: Could not deodex the following (you can try to deodex these files again):"
+      echo `ls *.odex`
+      echo
+      cd ../..
+      break
+    fi
+
+  fi
+
+  cd ../..
+
+done
+
+if [ "$do_log" == "y" ]
+then
+  echo
+  echo "A summary of the deodexing has been logged in $log_file"
+fi
+
+cd $base_dir

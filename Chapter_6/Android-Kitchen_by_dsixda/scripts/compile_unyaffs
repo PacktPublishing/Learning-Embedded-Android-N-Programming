@@ -1,0 +1,52 @@
+############################################################################
+#
+# Copyright (c) 2011 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+#
+# This script has two optional parameters:
+#
+# $1 = folder where the image is located
+# $2 = image name (e.g. data.img or system.img)
+#
+# If not specified, then script assumes system.img in working folder
+#
+
+if [ `uname | grep CYGWIN` ]
+then
+  unyaffs_file=unyaffs.exe
+else
+  unyaffs_file=unyaffs
+fi
+  
+if [ -e tools/unyaffs_files/$unyaffs_file ]
+then
+  rm -f tools/unyaffs_files/$unyaffs_file
+fi
+
+scripts/check_yaffs_sizes $1 $2
+
+if [ "$?" == "1" ]
+then
+  exit 1
+fi
+
+echo "Compiling unyaffs ..."
+cd tools/unyaffs_files
+gcc -o unyaffs unyaffs.c
+cd ../..
+
+if [ -e tools/unyaffs_files/$unyaffs_file ]
+then
+  echo unyaffs successfully compiled
+else
+  echo "Error: unyaffs not successfully compiled!"
+  exit 1
+fi
+
+exit 0

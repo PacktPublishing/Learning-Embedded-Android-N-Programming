@@ -1,0 +1,155 @@
+############################################################################
+#
+# Copyright (c) 2011 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+
+clear
+echo
+echo "-----------------------------------------------------------------"
+echo 
+echo "The Wireless Tethering option adds an app that allows your device"
+echo "to act as a wireless router.  Devices with Android 2.2 (Froyo) or"
+echo "later usually have this feature built into the operating system."
+echo ""
+echo "The app will be added under the folder /data/app.  If /data/app"
+echo "functionality was not already enabled then the script will do it"
+echo "automatically."
+echo
+echo "-----------------------------------------------------------------"
+echo
+
+scripts/pre_froyo_check
+is_old=$?
+
+if [ "$is_old" == "1" ] 
+then
+  echo -n "Proceed with Wireless Tethering (y/n)? (default: y): "
+  read do_tether
+
+  if [ "$do_tether" == "n" ]
+  then
+    exit 0
+  fi
+elif [ "$is_old" == "2" ]
+then
+  echo "Error: No system folder found!"
+  exit 0
+
+else
+  echo -n "ROM is newer than Android 2.1, add app anyway (y/n)? (default: n): "
+  read do_tether
+
+  if [ "$do_tether" != "y" ]
+  then
+    exit 0
+  fi
+fi
+
+
+scripts/ensure_boot_extracted
+
+if [ ! -d WORKING_* ]
+then
+  exit 0
+fi
+
+
+
+if [ -d BOOT-EXTRACTED ] 
+then
+  echo
+else
+  echo "BOOT-EXTRACTED folder not found"
+  exit 0
+fi
+
+
+#
+# Check for root (just look at default.prop in boot.img)
+#
+
+echo "Wireless tethering requires a rooted ROM"
+
+if [ -d BOOT-EXTRACTED/boot.img-ramdisk ]
+then
+  cd BOOT-EXTRACTED/boot.img-ramdisk
+else
+  echo "Error: BOOT-EXTRACTED/boot.img-ramdisk folder not found!"
+  exit 0
+fi
+
+if [ "`grep -m 1 ro.secure default.prop`" == "ro.secure=1" ] 
+then
+  echo "ROM is not fully rooted, because ro.secure=1 in default.prop."
+  echo "We will root it now ..."
+  echo
+  echo "Press Enter when you are ready"
+  read enterKey
+  cd ../..
+  rm -rf BOOT-EXTRACTED
+  scripts/do_root
+
+else
+  echo "Boot.img is already unsecure"
+  cd ../..
+  rm -rf BOOT-EXTRACTED
+fi
+
+
+if [ -d WORKING_* ]
+then
+  echo
+else
+  exit 0
+fi
+
+
+#
+# Copy APK
+#
+
+tether_file=wireless_tether*
+
+cd WORKING_*
+
+tether_list=( wireless_tether* android.tether* )
+tether_found=0
+
+for find_tether in ${tether_list[@]}
+do
+  
+  res=`find . -name $find_tether`
+  if [ "$res" != "" ]
+  then
+    echo "$res already found"
+    tether_found=1
+  fi
+
+done
+
+
+if [ $tether_found == 1 ]
+then
+  cd ..
+  exit 0
+
+else
+  cd ..
+  scripts/add_data_app dont_ask
+  cd WORKING_*
+
+  echo
+  echo "Copying app ..."
+  cp -v ../tools/apps/$tether_file data/app/
+  cd ..
+fi
+
+echo
+echo "Done"
+

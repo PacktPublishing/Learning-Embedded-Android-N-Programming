@@ -1,0 +1,545 @@
+############################################################################
+#
+# Copyright (c) 2013 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+
+clear
+echo
+
+if [ -d WORKING_* ]
+then
+  echo Found working folder
+else
+  echo No working folder found!
+  exit 0
+fi
+
+cd WORKING_*
+
+if [ -e META-INF/com/google/android/update-script ] && [ -e META-INF/com/google/android/updater-script ]
+then
+
+  echo
+  echo "Error:  Both update-script and updater-script are detected in working folder." 
+  echo "        Keep only one of them before building!" 
+  echo
+
+  cd ..
+  exit 0
+fi
+
+
+
+echo
+echo "Cleaning up any leftover files ..."
+echo
+
+rm -f *.zip
+rm -f testkey.*
+rm -f signapk.jar
+rm -f signed*.zip
+rm -f *smali.jar
+
+#
+# Clean up *.DS_Store hidden files
+#
+find . -name '*.DS_Store' -type f -delete
+
+#
+# Clean up stackdump files
+#
+find . -name sh.exe.stackdump -type f -delete
+
+
+#
+# Clean up temp files left behind by interrupted Amend/Edify conversion scripts
+#
+if [ -d META-INF/com/google/android ]
+then
+  find META-INF/com/google/android/ -name 'sed*' -type f -delete
+fi
+
+
+#
+# Clean up strange temp file issue in root of working folder
+#
+
+file_list=`find . -maxdepth 1 -type f`
+
+for filename in $file_list
+do
+
+  filename=`echo $filename | sed 's/\.\///g'`
+  header_bytes=`od -A n -H -j 0 -N 4 $filename | sed 's/ //g'`
+
+  if [ "$header_bytes" == "04034b50" ]
+  then
+    echo -n "Found file in root folder: $filename. Delete (y/n)? (default: y): "
+    read delete_file
+
+    if [ "$delete_file" != "n" ]
+    then
+      echo "Deleting $filename"
+      rm -f $filename
+    else
+      echo "Keeping $filename"
+    fi
+  fi
+done
+
+
+cd ..
+scripts/prompt_nand_type
+cd WORKING_*
+
+
+echo
+echo `pwd`
+echo
+ls -lrt
+cd ..
+echo
+
+
+scripts/fix_pre_build
+
+# Check for 'dsixda Null'
+cmd_line=`scripts/get_cmdline`
+
+extreme=no
+express=no
+interactive=no
+
+echo
+echo "=========================================================================="
+echo
+echo "Select a build option:"
+echo
+echo "  1 = Interactive Mode - recommended for most users"
+echo "      (Guide me through the build)"
+echo
+echo "  2 = Lazy Mode - trust the kitchen to do everything without asking"
+echo "      (Zipalign, Edify, sign ROM, auto-name ZIP)"
+echo
+echo "  3 = Express Mode - for advanced users"
+echo "      (Zipalign, Edify, don't sign ROM, auto-name ZIP)"
+echo 
+echo "  4 = Extreme Mode - for advanced users"
+echo "      (No zipalign, no script conversion, don't sign ROM, auto-name ZIP)"
+echo 
+echo "  5 = Cancel - Don't build now"
+echo
+echo "=========================================================================="
+echo
+echo -n "Number (default: 1): "
+
+read build_mode
+
+# Default is 1, so remember to account for Enter key
+if [ "$build_mode" == "5" ]
+then
+  echo "Cancelled"
+  exit 0
+elif [ "$build_mode" == "4" ]
+then
+  extreme=yes  
+elif [ "$build_mode" == "3" ]
+then
+  express=yes 
+elif [ "$build_mode" == "2" ]
+then
+  lazy=yes
+  express=yes
+else
+  interactive=yes
+fi
+
+
+if [ "$extreme" == "no" ]
+then
+  scripts/do_zipalign for_build $express
+fi
+
+if [ "$?" == "1" ]
+then
+  echo "Cancelling build"
+  exit 0
+fi
+
+cd WORKING_*
+
+
+#
+# Convert update-script (Amend) to updater-script (Edify) for the ZIP file only
+#
+
+if [ "$extreme" == "no" ] && [ -e META-INF/com/google/android/update-script ]
+then
+ 
+  cd ..
+  scripts/update_script_should_convert_back
+  auto_convert="$?"
+  cd WORKING_*
+  
+  if [ "$auto_convert" == "1" ] || [ "$express" == "yes" ]
+  then 
+    convert_it=y
+    want_file=updater-script
+
+  else
+    echo
+    echo "--------------------------------------------------------------------------"
+    echo 
+    echo " update-script detected in ROM"
+    echo
+    echo " To ensure compatibility with newer custom recovery images, you have"
+    echo " the option of using an updater-script (Edify) instead of an"
+    echo " update-script (Amend) in your ROM's ZIP file."
+    echo 
+    echo " Your working folder will remain the same and continue to have the "
+    echo " original update-script."
+    echo 
+    echo -n " Use updater-script in ROM's ZIP file (y/n)? (default: y): "
+    read convert_it
+  fi
+
+
+  if [ "$convert_it" != "n" ]
+  then
+
+    # Remove installbusybox (it's compatible with updater-script, but
+    # Edify syntax also supports run_program with multiple args)
+    if [ -e installbusybox ] 
+    then
+      cd ..
+      scripts/add_busybox_to_update_script
+      cd WORKING_*
+    fi
+
+    cd ..
+    scripts/convert_update_script for_zip $express
+
+    # updater-script has been produced
+    if [ "$?" != "1" ]
+    then
+
+      cd WORKING_*
+
+      if [ "$express" == "yes" ]
+      then
+        proceed_change=y
+      else
+        echo "Proceed with the change (y/n)?"
+        echo 
+        echo "  y = Proceed; updater-script and update-binary will be used in the ZIP"
+        echo "      file; update-script will remain in working folder."
+        echo "  n = Cancel; updater-script and update-binary will be deleted and not"
+        echo "      used."
+        echo
+         
+        echo -n "? (default: y): "
+        read proceed_change 
+      fi
+
+      echo
+
+      if [ "$proceed_change" != "n" ]
+      then
+
+        if [ -e META-INF/com/google/android/updater-script ]
+        then
+          ../scripts/convert_to_unix META-INF/com/google/android/updater-script 
+          want_file=updater-script
+        else
+          echo "updater-script not found, keeping update-script"
+          want_file=update-script
+        fi
+
+      else
+        echo
+        echo "Cancelling - we'll use the update-script in ZIP file"
+        want_file=update-script
+        rm -fv META-INF/com/google/android/updater-script
+        rm -fv META-INF/com/google/android/update-binary
+        echo
+      fi
+
+
+      if [ "$auto_convert" == "1" ] && [ "$proceed_change" == "n" ]
+      then
+        echo "You cannot flash a ROM for this device unless it has an updater-script."
+        echo
+        cd ..
+        exit 0
+      fi
+
+    else
+      echo "Keeping update-script"
+      cd WORKING_*
+      want_file=update-script
+    fi
+
+  else
+    echo
+    echo
+    echo "Keeping update-script"
+    want_file=update-script
+  fi
+
+  echo
+
+else
+
+  echo
+
+  if [ -e META-INF/com/google/android/update-script ]
+  then
+    echo "update-script (Amend) found"
+    want_file=update-script
+  fi
+  
+  if [ -e META-INF/com/google/android/updater-script ]
+  then
+    echo "updater-script (Edify) found"
+    want_file=updater-script
+  fi
+
+  echo
+fi
+
+
+
+
+
+
+if [ "$want_file" == "updater-script" ]
+then
+  script_not_want=*update-script*
+  binary_not_want=""
+else
+
+  # Remove any run_program references to busybox with multiple args
+  # and replace with the installbusybox script. This is compatible
+  # with update-script.
+  if [ -e system/xbin/busybox ]
+  then
+    cd ..
+    scripts/add_busybox_to_update_script amend
+    cd WORKING_*
+  fi
+
+  script_not_want=*updater-script*
+  binary_not_want=*update-binary*
+fi
+
+if [ "$cmd_line" == "dsixda Null" ]
+then
+  boot_not_want=boot.img
+else
+  boot_not_want=""
+fi
+
+
+#
+# Create update.zip
+#
+echo
+echo Making update.zip ...
+
+zip -r -y -q update * -x *.cvs* *.git* *.svn* \
+    *updater-script.orig* *update-binary.orig* *update-script.orig* \
+    $script_not_want $binary_not_want $boot_not_want
+
+
+echo
+
+# Remove updater-script from working folder if update-script already exists
+cd META-INF/com/google/android
+if [ -e update-script ]
+then
+  rm -f updater-script
+  rm -f update-binary
+fi
+
+cd ../../../..
+
+
+if [ -e update.zip ]
+then
+  echo update.zip created 
+  echo
+else
+  echo "Error: update.zip not created!"
+  cd ..
+  exit 0
+fi
+
+
+
+#
+# Sign update.zip if necessary
+#
+
+date_str=`date '+%m%d%y_%H%M%S'`
+
+cd ..
+device=`scripts/get_device_name | sed 's/ /_/g'`
+cd WORKING_*
+
+
+sign_update=no
+sign_str=unsigned
+
+if [ "$lazy" == "yes" ]
+then
+  do_sign=y
+else
+  do_sign=n
+fi
+
+if [ "$interactive" == "yes" ]
+then
+  echo
+  echo "It is recommended that you sign your ROM."
+  echo -n "Sign it (y/n)? (default: y): "
+  read do_sign
+fi
+
+if [ "$do_sign" != "n" ]
+then
+  sign_update=yes
+  sign_str=signed
+fi
+
+final_file=$device\_$sign_str\_$date_str.zip
+
+
+if [ "$sign_update" == "no" ]
+then
+  mv update.zip $final_file
+  res=$?
+
+else
+  echo
+  echo Signing update.zip ...
+
+  cp ../tools/signapk_files/testkey.* .
+  cp ../tools/signapk_files/signapk.jar .
+
+  java -jar signapk.jar testkey.x509.pem testkey.pk8 update.zip $final_file
+  res=$?
+
+  rm -f testkey.*
+  rm -f signapk.jar
+  rm -f update.zip
+fi
+
+
+if [ -e $final_file ] && [ "$res" == "0" ]
+then
+
+  #
+  # Rename zip
+  #
+  if [ "$interactive" == "yes" ]
+  then
+    cd ..
+    final_file2=`scripts/set_update_name $final_file`
+    cd WORKING_*
+    if [ "$final_file2" != "$final_file" ]
+    then
+      mv -fv $final_file $final_file2
+      final_file=$final_file2
+    fi
+  fi
+
+  echo
+
+  #
+  # Make output folder
+  #
+  if [ -d ../OUTPUT_ZIP ]
+  then
+    echo "Found OUTPUT_ZIP folder" 
+  else
+    echo "Creating folder OUTPUT_ZIP ..."
+    mkdir ../OUTPUT_ZIP
+  fi
+
+  mv $final_file ../OUTPUT_ZIP/
+
+  echo
+  echo
+  echo
+  echo "=========================================================================="
+  echo
+  echo "Congratulations ... your ROM is here:"
+  echo
+  echo "----> OUTPUT_ZIP/$final_file" 
+  echo
+  echo "Copy this to your device and flash from custom recovery menu."
+  echo
+  echo "=========================================================================="
+  echo
+  echo "NOTE 1: Remember to do a factory reset or data/cache wipe if necessary!"
+  echo
+  echo "NOTE 2: Always refer to the Android Kitchen FAQ @ xda-developers.com for "
+  echo "common issues such as:"
+  echo
+  echo " - Errors during flashing (e.g. Status 0)"
+  echo " - Non-booting ROM after flashing ZIP file"
+
+  if [ "$sign_update" == "no" ]
+  then
+    echo
+    echo "NOTE 3: You will need to disable signature checks in the recovery"
+    echo "menu to flash this ROM!  If you wish to sign this ROM later, please use"
+    echo "the Sign ZIP option in the Advanced menu of the kitchen."
+  fi
+
+  echo
+  echo "Good luck!"
+
+else 
+
+  echo
+  echo "Was not able to create $final_file!"
+  echo
+
+  if [ "$sign_update" == "yes" ]
+  then
+    if [ `uname | grep Linux` ] 
+    then
+      echo "Ensure you have a recent version of the Sun Java JDK"
+    
+    elif [ `uname | grep CYGWIN` ]
+    then
+      echo "Ensure you have the Sun Java JDK installed on your PC." 
+      echo
+      echo "If you already have the JDK, then perhaps the path to java.exe was"
+      echo "not defined properly:"
+      echo 
+      echo "e.g.  In $HOME/.bash_profile, add to the end:"
+      echo "      PATH=/cygdrive/c/Program\ Files/Java/jdk1.6.0_18/bin:\${PATH}" 
+      echo 
+      echo "      The above is an example. Your path may be different."
+
+    elif [ `sw_vers | grep -o Mac` ]
+    then
+      echo "You may need to install SoyLatte for Mac OS X (to replace the standard "
+      echo "Java JDK)"
+    fi
+  fi
+fi
+
+cd ..
+
+# System beep
+echo 
+

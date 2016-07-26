@@ -1,0 +1,83 @@
+############################################################################
+#
+# Copyright (c) 2011 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+#
+# This script has two arguments:
+#
+# $1 = file name in original_update (mandatory)
+# $2 = "kernel_only" or "name_given" - if this is specified then $1 is mandatory
+#
+
+
+update_file=$1
+ 
+echo "Selected $update_file"
+
+# Trim spaces in file name
+update_file2=`echo $update_file | tr ' ' '_'`
+
+if [ "$update_file" != "$update_file2" ]
+then
+  echo "Renaming to $update_file2"
+  mv "original_update/$update_file" original_update/$update_file2
+  update_file=$update_file2
+fi
+
+#
+# Working folder name
+#
+build_dir=`scripts/set_working_folder_name $2`
+
+#
+# Creating folder structure
+#
+echo
+echo "Creating working folder $build_dir ..."
+mkdir $build_dir
+
+echo "Copying $update_file to $build_dir ..."
+cp original_update/$update_file $build_dir
+cd $build_dir
+
+if [ "$update_file" != "UPDATA.APP" ]
+then
+  echo "Renaming to UPDATA.APP ..."
+  mv -f $update_file UPDATA.APP
+fi  
+
+echo
+echo "Extracting system.img and boot.img using ZeBadger's script ..."
+temp=`perl ../tools/huawei_files/split_updata.pl 2>/dev/null`
+
+if [ ! -e output/system.img ] 
+then
+  echo "Error: system.img not found"
+fi
+
+if [ ! -e output/boot.img ]
+then
+  echo "Error: boot.img not found"
+fi
+
+if [ ! -e output/system.img ] || [ ! -e output/boot.img ]
+then
+  cd ..
+  exit 1
+fi
+
+mv -f output/boot.img .
+mv -f output/system.img .
+rm -rf output
+rm -f UPDATA.APP
+
+cd ..
+scripts/img_files_to_working_folder no_create $2
+exit $?
+

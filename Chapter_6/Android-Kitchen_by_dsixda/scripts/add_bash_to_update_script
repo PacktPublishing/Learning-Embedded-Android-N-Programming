@@ -1,0 +1,87 @@
+############################################################################
+#
+# Copyright (c) 2012 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+
+cd WORKING_*
+echo
+
+if [ -e META-INF/com/google/android/update-script ]
+then
+  
+  #
+  # Deleting any existing lines with 'bin/bash' to prevent conflicts
+  #
+  echo "Removing existing lines containing bin/bash in update-script"
+  sed -i -e '/bin\/bash[ ]*$/d' META-INF/com/google/android/update-script
+  sed -i -e '/symlink.*\/bash .*/d' META-INF/com/google/android/update-script
+
+  #
+  # Do this to prevent conflicts with the update-script in ROMs that already have the binary
+  #
+  if [ -e system/bin/bash ]
+  then
+    if [ "`find system/xbin -name bash`" == "" ]
+    then
+      echo "Copying system/bin/bash to system/xbin/bash"
+      cp -f system/bin/bash system/xbin/bash
+    fi
+  fi
+
+  echo "Updating update-script with bash entries"
+
+  cd META-INF/com/google/android
+
+  if [ `grep -c "set_perm_recursive.*SYSTEM:xbin[ ]*$" update-script` != 0 ]
+  then
+    sed -i -e 's/set_perm_recursive\(.*\)SYSTEM:xbin[ ]*$/set_perm_recursive\1SYSTEM:xbin\nset_perm 0 0 04755 SYSTEM:xbin\/bash\nsymlink \/system\/xbin\/bash SYSTEM:bin\/sh\n/' update-script
+
+  elif [ `grep -c "init.goldfish.sh" update-script` != 0 ]
+  then
+    sed -i -e 's/set_perm 0 2000 0550 SYSTEM:etc\/init.goldfish.sh/set_perm 0 2000 0550 SYSTEM:etc\/init.goldfish.sh\nset_perm 0 0 04755 SYSTEM:xbin\/bash\nsymlink \/system\/xbin\/bash SYSTEM:bin\/sh/g' update-script
+
+  elif [ `grep -c "write_raw_image .*:boot.img BOOT:" update-script` != 0 ]
+  then
+    sed -i -e 's/write_raw_image \(.*:boot.img\) BOOT:/set_perm 0 0 04755 SYSTEM:xbin\/bash\nsymlink \/system\/xbin\/bash SYSTEM:bin\/sh\nwrite_raw_image \1 BOOT:/' update-script
+  
+  else
+    echo "set_perm 0 0 04755 SYSTEM:xbin/bash" >> update-script
+    echo "symlink /system/xbin/bash SYSTEM:bin/sh" >> update-script
+  fi
+
+  grep_bash=`grep -c xbin/bash update-script` 
+  cd ../../../..
+
+  if [ $grep_bash != 2 ]
+  then
+    echo "Error: Unable to update the update-script with bash"
+
+  else
+
+    #
+    # Ensure the update-script does not cause conflicts with 'sh' when it is symlinked
+    #
+    sh0_path=`find . -name sh0`
+    if [ "$sh0_path" == "" ] 
+    then
+      if [ -e system/bin/sh ]
+      then
+        echo "Moving aside /system/bin/sh due to addition of bash's symlink"
+        mv system/bin/sh system/bin/sh0
+      fi        
+    fi
+  fi
+
+else
+  echo "Error: No update-script found!"
+fi
+
+cd ..
+
+scripts/fix_update_script_blanks

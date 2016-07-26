@@ -1,0 +1,281 @@
+############################################################################
+#
+# Copyright (c) 2012 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+#
+# This script has two optional arguments:
+#
+# $1 = "no_create" or "create" or "create_working 
+#         - must specify no_create if working folder already exists
+# $2 = "kernel_only" or "name_given" - if this is specified then $1 is mandatory
+#
+
+if [ "$1" == "no_create" ] 
+then
+  build_dir=`ls | grep -m 1 ^WORKING_`
+
+  if [ -e $build_dir/factoryfs.rfs ]
+  then
+    system_img=factoryfs.rfs
+    csc_img=cache.rfs
+  elif [ -e $build_dir/system.rfs ]
+  then
+    system_img=system.rfs
+    csc_img=csc.rfs
+  else
+    echo "Error: No system RFS image found in $build_dir!"
+    exit 1
+  fi
+
+  mkdir $build_dir/system
+  mv $build_dir/$system_img $build_dir/system
+
+  if [ -e $build_dir/$csc_img ]
+  then
+    mv $build_dir/$csc_img $build_dir/system
+  else
+    scripts/show_cache_warning $csc_img
+  fi
+
+  # Sometimes images have zero permissions set when extracted from TAR archive,
+  # making them unreadable!
+  chmod -R 777 $build_dir
+
+else
+
+  #
+  # Check for $system_img, $csc_img and zImage/boot.img in original_update  
+  #
+
+  if [ -e original_update/factoryfs.rfs ]
+  then
+    system_img=factoryfs.rfs
+    csc_img=cache.rfs
+
+    if [ -e original_update/zImage ]
+    then
+      echo "Found original_update/zImage"
+      scripts/show_rooted_kernel_msg
+      kernel_img=zImage
+    else
+      echo "Warning: No original_update/zImage found"
+    fi
+
+  elif [ -e original_update/system.rfs ]
+  then
+    system_img=system.rfs
+    csc_img=csc.rfs
+
+    if [ -e original_update/boot.img ]
+    then
+      echo "Found original_update/boot.img"
+      kernel_img=boot.img
+    else
+      echo "Warning: No original_update/boot.img found"
+    fi
+
+  else
+    echo "Error: No system RFS image found in original_update folder!"
+    exit 1
+  fi
+
+  echo "Found original_update/$system_img"
+
+  if [ -e original_update/$csc_img ]
+  then
+    echo "Found original_update/$csc_img"
+  else
+    scripts/show_cache_warning original_update/$csc_img
+  fi
+
+
+  #
+  # Working folder name
+  #
+  build_dir=`scripts/set_working_folder_name $2`
+
+  echo
+  echo "Creating working folder $build_dir ..."
+  mkdir $build_dir
+  mkdir $build_dir/system
+
+  echo
+
+  # Kernel is optional
+  if [ -e original_update/$kernel_img ]
+  then
+    cp -vf original_update/$kernel_img $build_dir
+  fi
+
+  # Cache is optional
+  if [ -e original_update/$csc_img ]
+  then
+    cp -vf original_update/$csc_img $build_dir/system
+  fi
+
+  cp -vf original_update/$system_img $build_dir/system
+
+fi
+
+
+if [ "$1" == "no_create" ]
+then
+  src_dir=$build_dir/system
+else
+  src_dir=original_update
+fi
+
+system_dir=$build_dir/system
+cd $system_dir
+
+# Get full path
+system_dir=`pwd`
+cd ../..
+
+
+#
+# Directory tree
+#
+
+mkdir -p $build_dir/META-INF/com/google/android
+echo
+echo "Adding an update-script ..."
+cp tools/update_files/update-script $build_dir/META-INF/com/google/android/
+echo
+
+#
+# Extract files from $system_img
+#
+
+if [ `uname | grep CYGWIN` ]
+then
+  scripts/show_magiciso $system_dir $system_img
+else
+  scripts/extract_ext3_img $system_dir $system_img
+fi
+
+cd $system_dir
+
+rm -f $system_img 2>/dev/null
+if [ "$?" == "1" ]
+then
+  echo
+  echo "WARNING: $system_img is in use.  Remove file manually after application is closed."
+  echo
+fi
+
+cd ..
+
+if [ ! -d system ]
+then
+  echo
+  echo "Error:  No /system folder found!"
+  exit 1
+fi
+
+if [ ! -d system/framework ]
+then
+  echo
+  echo "Error: No /system/framework folder found!"
+  exit 1
+fi
+
+if [ ! -d system/app ]
+then
+  echo
+  echo "Error: No /system/app folder found!"
+  exit 1
+fi
+
+if [ "`ls system`" == "" ]
+then
+  echo 
+  echo "Error: /system folder is empty!"
+  echo
+  exit 1
+fi
+
+
+cd ..
+
+echo
+echo "The file $system_img has been fully unpacked into:"
+echo "  $system_dir"
+
+
+if [ -e $src_dir/$csc_img ]
+then
+  echo
+  echo "Do you wish to extract the Customer Software Customization (CSC)"
+  echo -n "from the $csc_img (y/n)? (default: y): "
+
+  read do_extract
+  echo
+
+  if [ "$do_extract" == "n" ]
+  then
+    rm -vf $src_dir/$csc_img
+    echo
+  else
+
+    #
+    # Extract files from $csc_img
+    #
+    if [ `uname | grep CYGWIN` ]
+    then
+      scripts/show_magiciso $system_dir $csc_img
+    else
+      scripts/extract_ext3_img $system_dir $csc_img
+    fi
+
+    cd $system_dir 
+
+    rm -f $csc_img 2>/dev/null
+    if [ "$?" == "1" ]
+    then
+      echo
+      echo "WARNING: $csc_img is in use.  Remove file manually after application is closed."
+      echo
+    fi
+
+    cd ../..
+    scripts/unzip_csc
+  fi
+fi
+
+
+
+#
+# Insert fake boot.img
+#
+scripts/check_no_bootimg
+
+
+#
+# update-script and other adjustments
+#
+if [ "$2" != "kernel_only" ] && [ "$2" != "name_given" ]
+then
+  scripts/fix_update_script 
+
+  # Modify the update-script with features found in Nandroid backup
+  scripts/fix_update_script_with_features
+
+  scripts/remove_recovery
+fi
+
+
+echo
+echo Listing of $build_dir:
+echo
+ls -l $build_dir
+
+echo
+echo "Finished setting up working folder!"
+

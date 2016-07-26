@@ -1,0 +1,109 @@
+############################################################################
+#
+# Copyright (c) 2012 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+ 
+temp=`ls WORKING_* 2>/dev/null`
+res=$?
+
+if [ "$res" == "2" ]
+then
+  echo "No working folder found!"
+  exit 0
+else
+  cd WORKING_*
+fi
+
+if [ ! -d META-INF/com/google/android ]
+then
+  echo "No META-INF/com/google/android folder found, creating it."
+  mkdir -p META-INF/com/google/android
+  echo
+fi
+
+cd META-INF/com/google/android
+
+
+if [ -e update-script ]
+then
+  echo "Found update-script"
+  cd ../../../../.. 
+
+else  
+
+  if [ -e updater-script ]
+  then
+
+    cd ../../../../..
+
+    echo
+    echo "======================================================="
+    echo
+    echo "Found an updater-script but not an update-script. For"
+    echo "compatibility with the kitchen scripts, only update-"
+    echo "scripts are used in the kitchen (see the kitchen's FAQ"
+    echo "at xda-developers.com for a detailed explanation)."
+    echo
+    echo "The kitchen will attempt to convert your updater-script"
+    echo "into an update-script file using the old (or similar)"
+    echo "syntax of an update-script, which makes it easier for"
+    echo "the kitchen to make changes for different devices. When"
+    echo "the ROM is built, it will be converted back."
+    echo 
+    echo "WARNING:"
+    echo "If you are using a custom ROM (ZIP) that was made"
+    echo "without the kitchen, then the conversion may not be"
+    echo "100%. The kitchen will make a backup of this file"
+    echo "as META-INF/com/google/android/updater-script.orig."
+    echo
+    echo "Choose an option number:"
+    echo 
+    echo "  1 = Convert it to update-script (Amend format)"
+    echo "  2 = Do nothing, keep updater-script (Edify format)"
+    echo
+    echo
+    echo -n "? (default=1) "
+
+    read enter_option
+    if [ "$enter_option" != "2" ]
+    then
+      scripts/convert_updater_script no_help
+      scripts/fix_update_script
+    else
+      echo
+      echo "NOTE: You can build or de-odex your ROM, but most other"
+      echo "options will not work.  You can choose to convert your"
+      echo "updater-script later from the Advanced Options menu."
+      echo
+      exit 1
+    fi
+
+  else
+
+    cd ../../../../..
+
+    echo "Did not find an update-script, creating one."
+    cd WORKING_*
+    cp ../tools/update_files/update-script META-INF/com/google/android/
+    cd ..
+    scripts/fix_update_script
+    scripts/fix_update_script_with_features
+
+    cd WORKING_*
+    bb=`find system -name busybox`
+    cd ..
+    if [ "$bb" != "" ]
+    then
+      scripts/add_busybox_to_update_script override
+    fi
+
+    echo
+  fi
+fi
+

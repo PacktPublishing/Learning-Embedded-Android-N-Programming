@@ -1,0 +1,86 @@
+############################################################################
+#
+# Copyright (c) 2012 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+
+cd WORKING_*
+cd META-INF/com/google/android
+
+if [ -e update-script ]
+then
+
+  #
+  # Deleting any existing lines that end with 'bin/su' to prevent conflicts
+  #
+  sed -i -e '/bin\/su[ ]*$/d' update-script
+
+  #
+  # Do this to prevent conflicts with the update-script in ROMs that already have the binary
+  #  
+  if [ -e ../../../../system/bin/su ]
+  then
+
+    if [ "`find ../../../../system/xbin -name su`" == "" ]
+    then
+      echo "Moving system/bin/su to system/xbin/su"
+      mkdir -p ../../../../system/xbin
+      mv -f ../../../../system/bin/su ../../../../system/xbin/su
+    else
+      echo "/system/xbin/su found, removing the one under /system/bin/su"
+      rm -f ../../../../system/bin/su
+    fi
+
+  elif [ "`find ../../../../system/xbin -name su`" == "" ]
+  then
+    echo "Error: /system/xbin/su and /system/bin/su not found!"
+    cd ../../../../..
+    echo
+    exit 0
+  fi
+
+  echo
+  echo "Updating update-script with su entry and symbolic link"
+
+  if [ `grep -c "set_perm_recursive.*SYSTEM:xbin[ ]*$" update-script` != 0 ]
+  then
+    sed -i -e 's/set_perm_recursive\(.*\)SYSTEM:xbin[ ]*$/set_perm_recursive\1SYSTEM:xbin\nset_perm 0 0 06755 SYSTEM:xbin\/su\nsymlink \/system\/xbin\/su SYSTEM:bin\/su\n/' update-script
+  
+  elif [ `grep -c "init.goldfish.sh" update-script` != 0 ]
+  then
+    sed -i -e 's/set_perm 0 2000 0550 SYSTEM:etc\/init.goldfish.sh/set_perm 0 2000 0550 SYSTEM:etc\/init.goldfish.sh\nset_perm 0 0 06755 SYSTEM:xbin\/su\nsymlink \/system\/xbin\/su SYSTEM:bin\/su/g' update-script
+
+  elif [ `grep -c "write_raw_image .*:boot.img BOOT:" update-script` != 0 ]
+  then
+    sed -i -e 's/write_raw_image \(.*:boot.img\) BOOT:/set_perm 0 0 06755 SYSTEM:xbin\/su\nsymlink \/system\/xbin\/su SYSTEM:bin\/su\nwrite_raw_image \1 BOOT:/' update-script
+  
+  else
+    echo "set_perm 0 0 06755 SYSTEM:xbin/su" >> update-script
+    echo "symlink /system/xbin/su SYSTEM:bin/su" >> update-script
+  fi
+
+  if [ ! -d ../../../../system/bin ]
+  then
+    echo "Creating /system/bin folder"
+    mkdir -p ../../../../system/bin
+    touch ../../../../system/bin/placeholder
+  fi
+
+  if [ `grep -c "/xbin/su " update-script` == 0 ]
+  then
+    echo "Error: Could not update update-script with su"
+  fi
+
+else
+  echo "Error: No update-script found!"
+fi
+
+cd ../../../../..
+
+scripts/fix_update_script_blanks
+

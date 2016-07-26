@@ -1,0 +1,365 @@
+############################################################################
+#
+# Copyright (c) 2013 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+#
+# This script has two optional arguments:
+#
+# $1 = "no_create" or "create" or "create_working 
+#         - must specify no_create if working folder already exists
+# $2 = "kernel_only" or "name_given" - if this is specified then $1 is mandatory
+#
+
+if [ "$1" == "no_create" ] 
+then
+  build_dir=`ls | grep -m 1 ^WORKING_`
+
+  mkdir $build_dir/system
+  mv $build_dir/system.img $build_dir/system
+
+  if [ -e $build_dir/lib.img ]
+  then
+    mkdir -p $build_dir/system/lib
+    mv $build_dir/lib.img $build_dir/system/lib
+  fi
+
+else
+
+  current_dir=`pwd`
+  dest_dir=$current_dir/original_update
+
+  #
+  # Check for system.img/boot.img/lib.img in original_update  
+  #
+  if [ -e original_update/system.img ]
+  then
+    echo "Found original_update/system.img"
+    if [ -e original_update/boot.img ]
+    then
+      echo "Found original_update/boot.img"
+    fi
+
+    if [ -e original_update/lib.img ]
+    then
+      echo "Found original_update/lib.img"
+    fi
+
+  else
+
+    if [ -e original_update/boot.img ]
+    then
+      echo "Found original_update/boot.img"
+      echo "Error: No original_update/system.img found"
+    else
+      echo
+      echo "Error: No ROMs found under original_update folder!"
+    fi
+
+    exit 1
+  fi
+
+
+  #
+  # Working folder name
+  #
+  build_dir=`scripts/set_working_folder_name $2`
+
+  echo
+  echo "Creating working folder $build_dir ..."
+  mkdir $build_dir
+  mkdir $build_dir/system
+
+  if [ -e original_update/boot.img ]
+  then
+    echo "Copying boot.img ..."
+    cp original_update/boot.img $build_dir
+  fi
+
+  echo "Copying system.img ..."
+  cp original_update/system.img $build_dir/system
+
+  if [ -e original_update/lib.img ]
+  then
+    echo "Copying lib.img ..."
+    mkdir -p $build_dir/system/lib
+    cp original_update/lib.img $build_dir/system/lib
+  fi
+
+fi
+
+
+#
+# Directory tree
+#
+
+mkdir -p $build_dir/META-INF/com/google/android
+echo
+echo "Adding an update-script ..."
+cp tools/update_files/update-script $build_dir/META-INF/com/google/android/
+
+
+
+#
+# Check for YAFFS/TAR/EXT*
+#
+
+system_dir=$build_dir/system
+
+scripts/check_if_img_yaffs $system_dir system.img
+
+is_yaffs=$?
+
+if [ "$is_yaffs" == "1" ]
+then
+
+  if [ `uname | grep CYGWIN` ]
+  then
+    unyaffs_file=unyaffs.exe
+  else
+    unyaffs_file=unyaffs
+  fi
+    
+  scripts/compile_unyaffs
+  if [ "$?" == "1" ]
+  then
+    exit 0
+  fi
+
+  echo
+  echo Extracting contents of system.img ...
+  cd $system_dir
+  result=`../../tools/unyaffs_files/$unyaffs_file system.img 2>/dev/null`
+
+else
+
+  cd $system_dir
+
+  #
+  # Check for TAR archive
+  #
+  test_tar=`od -A n --strings -j 0 -N 7 system.img`
+
+  if [ "$test_tar" == "system/" ]
+  then
+    echo "system.img is a TAR archive"
+    echo "Extracting files ..."
+    tar xf system.img -C ../
+
+  else
+
+    #
+    # Check for Samsung EXT4
+    #
+    test_ext4=`od -A n -h -j 0 -N 5 system.img | sed 's/ //g'`
+
+    if [ "$test_ext4" == "ff3aed260001" ]
+    then
+
+      mv -fv system.img ../system.img.ext4
+      cd ../..
+      scripts/simg_ext4_files_to_working_folder no_create
+      exit $?
+
+    else
+
+      echo
+      echo "NON-YAFFS/NON-TAR FILE FORMAT DETECTED IN ROM"
+      echo
+
+      # Get full path
+      system_dir=`pwd`
+
+      cd ../..
+      scripts/extract_ext3_img $system_dir system.img
+      cd $system_dir
+    fi
+  fi
+
+fi
+
+
+check_dump=`ls unyaffs*stackdump* 2>/dev/null`
+rm -f system.img 2>/dev/null
+
+if [ "$?" == "1" ]
+then
+  echo
+  echo "WARNING: system.img is in use.  Remove file manually after application is closed."
+  echo
+fi
+
+
+cd ..
+
+if [ "$check_dump" != "" ]
+then
+  echo
+  echo "Error: Stackdump file found under /system folder due to incompatibility"
+  echo "       with unyaffs."
+  exit 1
+fi
+
+if [ ! -d system ]
+then
+  echo
+  echo "Error:  No /system folder found!"
+  exit 1
+fi
+
+if [ ! -d system/framework ]
+then
+  echo
+  echo "Error: No /system/framework folder found!"
+  exit 1
+fi
+
+if [ ! -d system/app ]
+then
+  echo
+  echo "Error: No /system/app folder found!"
+  exit 1
+fi
+
+if [ "`ls system`" == "" ]
+then
+  echo 
+  echo "Error: /system folder is empty!"
+  echo
+  exit 1
+fi
+
+
+
+#
+# Extract the contents of lib.img, which will go under /system/lib
+#
+
+if [ -e system/lib/lib.img ]
+then
+
+  echo 
+  echo "Found lib.img, which contains contents of /system/lib ..."
+
+  cd ..
+
+  if [ `uname | grep CYGWIN` ]
+  then
+    scripts/press_enter
+  fi
+
+  scripts/extract_ext3_img $system_dir/lib lib.img
+  
+  rm -f $system_dir/lib/lib.img 2>/dev/null
+
+  if [ "$?" == "1" ]
+  then
+    echo
+    echo "WARNING: lib.img is in use.  Remove file manually after application is closed."
+    echo
+  fi
+
+  #
+  # Check for empty /system/lib folder
+  #
+  lib_files=`ls $system_dir/lib`
+  if [ "$lib_files" == "lib.img" ] || [ "$lib_files" == "" ]
+  then
+    echo
+    echo "Error: No files extracted from lib.img"
+    exit 1
+  fi
+
+else
+  cd ..
+  echo
+fi
+
+
+
+cd WORKING_*
+
+if [ ! -e boot.img ]
+then
+	cd ..
+  scripts/check_no_bootimg
+
+else
+
+	cd ..
+
+	#
+	# Check for location of Android header in boot.img so that it can be
+	# added to working folder correctly
+	#
+
+	scripts/check_bootimg_header
+
+	# Not a valid boot.img
+	if [ "$?" == "1" ]
+	then
+
+		scripts/check_galaxy_s
+		is_gs=$?
+
+		if [ "$is_gs" == "1" ]
+		then
+		  cp_file=redbend_ua
+		else
+		  scripts/check_galaxy_s2
+		  is_gs2=$?
+
+		  if [ "$is_gs2" == "1" ]
+		  then
+		    cp_file=flash_image
+		  fi
+		fi
+
+		if [ "$is_gs" == "1" ] || [ "$is_gs2" == "1" ]
+		then
+		  echo
+		  echo "NOTE: The boot.img may actually be a kernel (zImage) instead.  We will"
+		  echo "rename it to zImage."
+		  echo
+
+		  cd WORKING_*
+		  mv -v boot.img zImage
+		  echo
+		  cp -v ../tools/samsung_files/$cp_file .
+		  echo flash_zimage >> META-INF/com/google/android/update-script
+		  cd ..
+		  scripts/check_no_bootimg 
+		fi
+	fi
+fi
+
+
+# Wi-fi fix - required for some Huawei devices
+scripts/fix_huawei_wifi
+
+# Sony Xperia 2011-12 devices - bloatware
+scripts/remove_xperia_bloat
+
+if [ "$2" != "kernel_only" ] && [ "$2" != "name_given" ]
+then
+  scripts/fix_update_script 
+
+  # Modify the update-script with features found in Nandroid backup
+  scripts/fix_update_script_with_features
+
+  scripts/remove_recovery
+fi
+
+
+echo Listing of $build_dir:
+echo
+ls -l $build_dir
+
+echo
+echo "Finished setting up working folder!"
+

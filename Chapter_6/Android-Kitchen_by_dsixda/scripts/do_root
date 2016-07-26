@@ -1,0 +1,180 @@
+############################################################################
+#
+# Copyright (c) 2012 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+
+if [ "$1" == "" ]
+then
+  clear
+fi
+
+if [ ! -d WORKING_* ]
+then
+  echo "No working folder found!"
+  scripts/press_enter
+  exit 0
+fi
+
+scripts/check_galaxy_s_and_s2
+sgs=$?
+
+
+echo
+echo "ROOTING"
+echo "--------------------------------------------"
+echo 
+echo "The following will be done for root:"
+echo
+echo "- Add Superuser app and su binary"
+echo "- Add necessary lines to the update-script"
+
+if [ "$sgs" == "0" ]
+then
+  echo "- Update default.prop in the ramdisk"
+fi
+echo 
+echo "--------------------------------------------"
+echo
+
+cd WORKING_*
+
+if [ ! -d system ]
+then
+  echo "No system folder found!"
+  cd ..
+  scripts/press_enter
+  exit 0
+fi
+
+cd system
+
+if [ ! -e build.prop ]
+then
+  echo "Error: build.prop not found!"
+  cd ../..
+  scripts/press_enter
+  exit 0
+fi
+
+su_path=`find . -name su`
+super_path=`find . -iname Superuser.apk`
+
+super_su_exists=0
+if [ "$super_path" == "" ]
+then
+  super_path=`find . -iname SuperSU.apk`
+  if [ "$super_path" != "" ]
+  then
+    super_su_exists=1
+  fi
+fi
+overwrite=0
+
+if [ "$su_path" != "" ] && [ "$super_path" != "" ] 
+then
+  echo "The /system folder contains $su_path and $super_path"
+  echo -n "Overwrite (y/n)? (default: n): "
+  read do_su
+
+  if [ "$do_su" != "y" ]
+  then
+    cd ../..
+    exit 0
+  else
+    overwrite=1
+    echo
+    echo
+  fi
+
+fi
+
+
+echo "Which version of the Superuser package do you want"
+echo "to install?"
+echo
+
+echo " c - Chainfire's SuperSU"
+echo " d - ChainsDD's version " 
+echo " v - Original version (very old)"
+echo
+echo " x - Cancel rooting (default)"
+echo
+
+echo -n "? "
+read enterVersion
+echo
+
+if [ "$enterVersion" == "c" ]
+then
+  folder=chainfire
+elif [ "$enterVersion" == "d" ]
+then
+  if [ "`grep -c ro.build.version.release=1 build.prop`" != "0" ]
+  then
+    folder=cupcake-donut
+  else
+    folder=current
+  fi
+elif [ "$enterVersion" == "v" ]
+then
+  folder=old
+else
+  echo "Cancelled"
+  cd ../..
+  exit 1
+fi
+
+if [ "$overwrite" == "1" ]
+then
+  echo
+  echo "Overwriting old 'su' binary and Superuser app ..."
+  rm -fv $su_path
+  rm -fv $super_path
+fi
+
+
+
+if [ -d xbin ]
+then
+  echo Found /system/xbin
+else
+  echo Creating /system/xbin
+  mkdir xbin
+fi
+
+if [ "$enterVersion" == "d" ]
+then
+  cp -fv ../../tools/su_files/chainsdd/Superuser.apk app
+  cp -fv ../../tools/su_files/chainsdd/$folder/su xbin
+else
+  cp -fv ../../tools/su_files/$folder/app/Superuser.apk app
+  cp -fv ../../tools/su_files/$folder/bin/su xbin
+fi
+
+if [ "$super_su_exists" == "1" ] && [ "$enterVersion" == "c" ]
+then
+  mv -fv app/Superuser.apk app/SuperSU.apk
+fi
+
+cd ../..
+
+echo
+scripts/add_su_to_update_script
+
+if [ "$sgs" == "0" ]
+then
+  scripts/do_root_boot_img
+fi
+
+echo 
+echo "Finished rooting"
+echo
+
+scripts/press_enter
+

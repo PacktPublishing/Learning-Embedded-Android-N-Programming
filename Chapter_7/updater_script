@@ -1,0 +1,12 @@
+ui_print("Edify Script for binary installation");
+ui_print("Flashing a binary");
+show_progress(0.700000, 0);
+ui_print("mounting /system");
+mount("ext4", "EMMC", "/dev/block/system", "/system");
+ui_print("");
+ui_print("Installing binary");
+package_extract_dir("system", "/system");
+ui_print("unmounting system");
+unmount("/system");
+ui_print("unmounted system");
+ui_print("Operations completed!");

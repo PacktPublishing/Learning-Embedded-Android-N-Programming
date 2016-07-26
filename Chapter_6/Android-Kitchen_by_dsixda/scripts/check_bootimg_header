@@ -1,0 +1,70 @@
+############################################################################
+#
+# Copyright (c) 2012 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+#
+# This script has one optional parameter:
+#
+# $1 = folder name
+#
+
+base_dir=`pwd`
+
+if [ "$1" == "" ]
+then
+  cd WORKING_*
+else
+  cd $1
+fi
+
+#
+# Check for strange boot.img header
+#
+
+check_header=`od -A n -h -j 0 -N 8 boot.img | sed 's/ //g'`
+
+if [ "$check_header" != "4e415244494f2144" ]
+then
+
+  echo
+  echo "Android 'magic' header not found at start of boot.img"
+  echo "Checking if it exists elsewhere ..."
+
+  # Mac OS X adds extra spaces between the numbers!
+  hex_offset=`od -x -A x boot.img | grep -m 1 "4e41 [ ]*5244 [ ]*494f [ ]*2144" | sed -e 's/ .*//'`
+
+  if [ "$hex_offset" != "" ]
+  then
+
+    #
+    # Remove leading bytes before the Android header 
+    #
+
+    dec_offset=`printf "%d" 0x$hex_offset`
+    echo "Android header found at offset $dec_offset"
+    echo "Removing extra stuff before it so boot.img can be read properly ..."
+
+    dd if=boot.img of=newboot.img bs=1 skip=$dec_offset
+    rm -f boot.img
+    mv newboot.img boot.img
+    echo
+    cd $base_dir
+    exit 0
+
+  else
+    echo "Warning: Android header not found in boot.img (unsupported format)"
+    cd $base_dir
+    exit 1
+  fi
+fi
+
+
+cd $base_dir
+exit 0
+

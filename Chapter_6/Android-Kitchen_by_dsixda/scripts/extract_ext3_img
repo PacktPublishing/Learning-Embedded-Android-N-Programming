@@ -1,0 +1,299 @@
+############################################################################
+#
+# Copyright (c) 2013 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+
+img_dir=$1
+img_file=$2
+
+if [ "$img_dir" == "" ] || [ "$img_file" == "" ] 
+then
+  echo "Error:  extract_ext3_img is missing information."
+  echo "        Syntax: extract_ext3_img <file_directory> <img_file_name>"
+  echo
+  exit 1
+fi
+
+img_path=$img_dir/$img_file
+
+if [ ! -e $img_path ]
+then
+  echo "Error: $img_path not found!"
+  echo
+  exit 1
+fi
+
+base_dir=`pwd`
+
+if [ `uname | grep CYGWIN` ]
+then
+
+  dos_path=`cygpath -wp $img_dir`
+
+  while :
+  do
+
+    clear
+
+    echo 
+    echo "Unpack the $img_file"
+    echo "-----------------------"
+    echo 
+    echo "Enter a choice below to unpack your image file, assuming it"
+    echo "uses an EXT filesystem. You might find that one option works"
+    echo "better than the other."
+    echo
+    echo "e.g.  EXT3: Older devices such as HTC Desire HD"
+    echo "      EXT4: Newer devices such as HTC Desire S"
+    echo 
+    echo "  1 - Run Explore2fs  (Best choice for EXT3)"
+    echo "  2 - Run Ext2Explore (EXT3/EXT4)"
+    echo "  3 - I'm finished unpacking / Abort"
+    echo
+    echo
+    echo "NOTE: If any of the tools listed above have problems with"
+    echo "      extraction, then try the other option(s) listed."
+    echo
+    echo -n "Select number: "
+
+    read enterNumber
+
+    if [ "$enterNumber" == "1" ]
+    then
+      scripts/show_explore2fs $img_dir $img_file
+
+    elif [ "$enterNumber" == "2" ]
+    then
+      scripts/show_ext2explore $img_dir $img_file
+    
+    elif [ "$enterNumber" == "3" ]
+    then
+      break
+    
+    else
+      echo "Invalid option"
+    fi
+
+    if [ "$enterNumber" == "1" ] || [ "$enterNumber" == "2" ]
+    then
+      echo
+      echo "--> If you're satisfied with extraction, select option 3 in next menu"
+      echo
+
+      scripts/press_enter
+    fi
+
+  done
+
+
+  cd $img_dir
+  rm -f unyaffs*stackdump
+
+  cd $base_dir
+
+
+elif [ `uname | grep Linux` ]
+then
+
+  echo
+  echo "Mounting $img_file to loopback device and then extracting files ..."
+  
+  cd $img_dir
+
+  user_=`whoami`
+  mkdir ../tmp
+
+  # For ext4 (To prevent hanging when unmounting, use: ro,noexec,noload)
+  sudo mount -o loop,ro,noexec,noload $img_file ../tmp 2>/dev/null  
+  res=$?
+
+  if [ "$res" != "0" ]
+  then
+    # For ext3
+    sudo mount -o loop $img_file ../tmp 2>/dev/null
+    res=$?
+  fi
+  
+  if [ "$res" == "0" ]
+  then
+    
+    if [ "$img_file" == "ext4_cache.img" ] || [ "$img_file" == "cache.rfs" ]
+    then
+      sudo cp ../tmp/recovery/sec_csc.zip .
+    elif [ "$img_file" == "csc.rfs" ]
+    then
+      sudo cp ../tmp/csc.zip .
+    else
+      sudo cp -R ../tmp/* .
+    fi
+
+    sudo umount ../tmp
+    rmdir ../tmp
+    sudo chown -R $user_ *
+  else
+    echo "Error: Unable to mount $img_file"
+  fi
+
+  rm -f unyaffs*stackdump
+
+  cd $base_dir
+
+elif [ `sw_vers | grep -o Mac` ]
+then
+  
+  #
+  # Mac support 
+  # - Thanks to he8us for adding the FUSE routine
+  #
+
+  cd $img_dir
+
+  rfs_list=`ls | grep -i \\.rfs$`
+
+  # Mount files for RFS
+  if [ "$rfs_list" != "" ]
+  then
+
+    mount_dir=/Volumes/RFS
+
+    echo "We'll need to do some superuser stuff here"
+    if [ -d $mount_dir ]
+    then
+      #sudo umount $mount_dir 2>/dev/null
+      sudo diskutil umount force $mount_dir 2>/dev/null
+    fi
+
+    sudo mkdir $mount_dir 2>/dev/null
+    sudo hdiutil attach -imagekey diskimage-class=CRawDiskImage -nomount $img_file > temp.log
+    mydisk=`more temp.log | sed -e 's/[ \t]*$//g'`
+    rm -f temp.log
+
+    sudo mount_msdos $mydisk $mount_dir
+
+  # Check FUSE - for EXT2/EXT3
+  else
+
+    res=`which fuse-ext2 2>/dev/null`
+    result=$?
+
+    if [ "$result" != "0" ]
+    then
+      fuse_cmd="/usr/local/bin/fuse-ext2"
+      res=`which $fuse_cmd 2>/dev/null`
+      result=$?
+
+      if [ "$result" != "0" ]
+      then
+        echo
+        echo "Your system does not have FUSE installed."
+        echo "Read the Android Kitchen FAQ to install MacFUSE, followed by fuse-ext2."
+        exit 1
+      fi
+
+    else
+      fuse_cmd=fuse-ext2
+    fi
+
+    mount_dir=/tmp/for_kitchen
+
+  fi
+
+
+  #
+  # Now extract the files for Mac
+  #
+
+  cd $base_dir
+  cd $img_dir
+
+  # Check for CSC plugin script
+  if [ "`echo $img_dir | grep csc_`" != "" ] && [ "`echo $img_dir | grep WORKING_`" == "" ]
+  then
+    mkdir system
+    mv $img_file system
+    cd system
+    csc_plugin=1
+  fi
+
+  echo
+  echo "Ready to extract files from $img_file"
+  mv $img_file ../$img_file
+  cd ..
+
+  # For FUSE
+  if [ "$rfs_list" == "" ] 
+  then
+    if [ -d $mount_dir ]
+    then
+      umount $mount_dir
+      rm -rf $mount_dir
+    fi
+
+    mkdir $mount_dir
+
+    echo "Trying to mount the filesystem"
+    buffer=`$fuse_cmd $img_file $mount_dir`
+    echo $buffer
+  fi
+
+  listing=`ls $mount_dir`
+  echo "File system listed, analyzing $mount_dir ..."
+  
+  if [ "$listing" != "" ]
+  then
+
+    echo "Copying files"
+
+    if [ "$img_file" == "ext4_cache.img" ] || [ "$img_file" == "cache.rfs" ]
+    then
+      cp $mount_dir/recovery/sec_csc.zip system/
+    elif [ "$img_file" == "csc.rfs" ]
+    then
+      cp $mount_dir/csc.zip system/
+    else
+      cp -r $mount_dir/* $img_dir/
+    fi
+
+  else
+    echo "Error: Mount point empty"
+    echo $listing
+  fi
+
+  if [ "$rfs_list" == "" ]
+  then
+    umount $mount_dir
+    rm -rf $mount_dir
+  else
+    #sudo umount $mount_dir
+    sudo diskutil umount force $mount_dir    
+    hdiutil detach $mydisk
+  fi
+
+  # Check again for CSC plugin
+  if [ "$csc_plugin" == "1" ]
+  then
+    mv system/*.zip .
+    rm -rf system
+  else
+    mv $img_file $img_dir/$img_file
+    cd system
+  fi
+
+  if [ "$listing" != "" ]
+  then
+    rm -f unyaffs*stackdump
+    cd $base_dir
+  else
+    exit 1
+  fi
+
+fi
+
+
+

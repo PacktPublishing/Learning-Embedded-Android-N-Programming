@@ -1,0 +1,340 @@
+############################################################################
+#
+# Copyright (c) 2013 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+
+while :
+do
+
+  clear
+
+  echo
+  echo "----------------------------------------------------------------"
+  echo  
+  echo "Deodexing (or de-odex'ing) will take the *.odex files in your "
+  echo "ROM and convert them into classes.dex files, which will then be" 
+  echo "zipped into their *.apk or framework *.jar files."
+  echo ""
+  echo "The intent of deodexing is to allow for theming, customization"
+  echo "and portability of the ROM.  It puts your files into a state"
+  echo "where they can be used for themes, icons, trackball/trackpad"
+  echo "modifications, etc."
+  echo
+  echo "The process usually takes several minutes and does NOT require"
+  echo "you to sign any of the files afterwards."
+  echo
+  echo "NOTE: Reversing the de-odexing process by getting back the odex"
+  echo "files ('re-odexing') is not supported in the kitchen and would"
+  echo "be impossible to implement."
+  echo 
+  echo "----------------------------------------------------------------"
+  echo
+
+  if [ ! -d WORKING_* ]
+  then
+    echo No working folder found!
+    scripts/press_enter
+    exit 0
+  fi
+
+  cd WORKING_*
+
+  if [ ! -d system/app ]
+  then
+    echo "system/app is missing!"
+    cd ..
+    scripts/press_enter
+    exit 0
+  fi
+
+  if [ ! -d system/framework ]
+  then
+    echo "system/framework is missing!"
+    cd ..
+    scripts/press_enter
+    exit 0
+  fi
+
+
+
+  #
+  # Look for odex files in preload folder (e.g. in Galaxy S2)
+  #
+
+  if [ -d preload/symlink/system/app ]
+  then
+
+    cd preload/symlink/system/app
+
+    num_preload_odex=`find . | grep -c "\.odex$"`
+    num_preload_apk=`find . | grep -c "\.apk$"`
+    num_sysapp_odex=`find ../../../../system/app | grep -c "\.odex$"`
+    num_sysfr_odex=`find ../../../../system/framework | grep -c "\.odex$"`
+
+    # Case 1 - No odex files in preload or /system/app
+    if [ $num_preload_odex == 0 ] && [ $num_sysapp_odex == 0 ] 
+    then
+      echo "No ODEX files found in /preload/symlink/system/app or /system/app"
+      echo
+
+    # Case 2 - No apk/odex files in preload but odex files in /system/app
+    elif [ $num_preload_odex == 0 ] && [ $num_preload_apk == 0 ] 
+    then
+
+      if [ ! -e preload_apk_list ]
+      then
+        echo "Warning: No APK/ODEX files found in /preload/symlink/system/app"
+        echo
+      fi
+
+    # Case 3 - apk/odex files in preload
+    elif [ $num_preload_odex -gt 0 ] || [ $num_preload_apk -gt 0 ]
+    then
+
+      echo "NOTE: $num_preload_apk APK and $num_preload_odex ODEX files are detected in /preload folder."
+      echo
+      echo "Temporarily move files from preload symlink folder to /system/app (y/n)?"
+      echo -n "(default: y): "
+
+      read move_files
+      echo
+
+      if [ "$move_files" == "n" ]
+      then
+        echo "WARNING: Not moving!"
+      else
+
+        if [ $num_preload_apk -gt 0 ] 
+        then
+          apk_list=`ls *.apk`
+          echo $apk_list > preload_apk_list
+          mv -fv *.apk ../../../../system/app/
+        else
+          touch placeholder
+        fi
+
+        if [ $num_preload_odex -gt 0 ] 
+        then
+          mv -fv *.odex ../../../../system/app/
+        fi
+
+      fi
+
+      echo
+    fi
+
+    cd ../../../..
+  fi
+
+
+
+  num_odex_fr=`find system/framework | grep -c "\.odex$"`
+  num_odex_app=`find system/app | grep -c "\.odex$"`
+
+  echo "Found $num_odex_fr *.odex files in /system/framework"
+  echo "Found $num_odex_app *.odex files in /system/app"
+
+  if [ -e preload/symlink/system/app/preload_apk_list ]
+  then
+    echo
+    echo "NOTE: A set of APK files will be moved back to /preload folder"
+    echo "after de-odexing is completed."
+    echo 
+  fi
+
+
+  if [ $num_odex_fr == 0 ] && [ $num_odex_app == 0 ]
+  then
+    echo
+    echo "No need to de-odex!"
+    cd ..
+    scripts/press_enter
+    exit 0
+  fi
+
+  if [ $num_odex_fr == 0 ] && [ $num_odex_app -gt 0 ]
+  then
+    echo
+    echo "WARNING: You must deodex the app folder if you had already"
+    echo "deodexed the framework folder."
+    echo
+  fi
+
+
+  cd ..
+  scripts/convert_to_unix tools/deodex_files/api_level.txt    
+  api_level=`scripts/get_api_level`
+  cd WORKING_*
+
+
+  #
+  # Show menu choices
+  #
+
+  echo
+  echo "Enter a choice:"
+  echo
+
+  if [ $num_odex_app -gt 0 ] || [ $num_odex_fr -gt 0 ]
+  then
+    echo " bb  = Back up both folders (do first!)"
+  fi
+
+  echo "  v  = Set Android OS version (Current API level = $api_level)"
+  echo
+  echo "       IMPORTANT: Ensure you set the correct API level"
+  echo
+
+  if [ $num_odex_fr -gt 0 ]
+  then
+    echo "  f  = Deodex /system/framework"
+  fi
+  if [ $num_odex_app -gt 0 ]
+  then
+    echo "  a  = Deodex /system/app"
+  fi
+  if [ $num_odex_app -gt 0 ] && [ $num_odex_fr -gt 0 ]
+  then
+    echo "  b  = Deodex both folders (recommended)"
+  fi
+  echo "  s  = Deodex a single file"
+  echo "  x  = Exit"
+  echo
+  echo -n "? "
+
+  read enterChoice
+
+  list1=( app )
+  list2=( framework )
+  list3=( framework app )
+
+  if [ "$enterChoice" == "a" ]
+  then
+    dir_list=app
+  elif [ "$enterChoice" == "v" ]
+  then
+    cd ..
+    scripts/change_api_level
+    continue
+  elif [ "$enterChoice" == "f" ] 
+  then
+    dir_list=framework
+  elif [ "$enterChoice" == "b" ] 
+  then
+    dir_list="framework app"
+  elif [ "$enterChoice" == "s" ]
+  then
+    cd ..
+    scripts/choose_single_deodex
+    continue
+  elif [ "$enterChoice" == "bb" ]
+  then
+
+    #
+    # Backup
+    #
+
+    folder_list=( framework app )
+    date_str=`date '+%m%d%y_%H%M%S'`
+
+    for f in ${folder_list[@]}
+    do
+
+      backup_folder="old_`echo -n $f`_$date_str"
+      cd system/$f
+
+      echo
+      echo "Creating backup folder $backup_folder outside working folder ..."
+      mkdir ../../../$backup_folder
+      cp  -r * ../../../$backup_folder/
+      echo "Finished backup of $f folder."
+
+      cd ../..
+    done
+
+    cd ..
+    scripts/press_enter
+    continue
+
+  elif [ "$enterChoice" == "x" ]
+  then
+    cd ..
+    exit 0
+  else
+    cd ..
+    continue
+  fi
+
+
+  sgs2_fix=no
+
+  # Add java.awt.jar to framework folder (fix Email.apk and MobilePrint.apk)
+  # - Thanks to xeudoxus
+  if [ `echo $dir_list | grep -c app` -gt 0 ] && \
+      [ -e system/framework/com.samsung.device.jar ] && [ ! -e system/framework/java.awt.jar ]
+  then
+    if [ -e system/app/Email.apk ] || [ -e system/app/MobilePrint.apk ] 
+    then
+      sgs2_fix=yes
+      cp -f ../tools/samsung_files/java.awt.jar system/framework/
+    fi
+  fi
+
+  cd ..
+  scripts/do_deodex_folder "$dir_list"
+
+  cd WORKING_*
+
+  if [ "$sgs2_fix" == "yes" ]
+  then
+    rm -f system/framework/java.awt.jar
+  fi
+
+  num_odex_app=`find system/app | grep -c "\.odex$"`
+  num_apk_app=`find system/app | grep -c "\.apk$"`
+  num_odex_fr=`find system/framework | grep -c "\.odex$"`
+
+  echo
+  echo "$num_odex_app *.odex files remain in system/app"
+  echo "$num_odex_fr *.odex files remain in system/framework"
+
+  if [ $num_odex_fr == 0 ] && [ $num_odex_app -gt 0 ]
+  then
+    echo
+    echo "WARNING: You must deodex the app folder if you had already"
+    echo "deodexed the framework folder."
+  fi
+
+  # For some Samsung Exynos Galaxy S2 / Note ROMs
+  if [ $num_odex_app == 0 ] && [ $num_apk_app != 0 ] && [ -e preload/symlink/system/app/preload_apk_list ]
+  then
+    echo
+    echo "Moving back all *.apk originally found in /preload/symlink/system/app ..."
+    echo
+
+    for apk in `cat preload/symlink/system/app/preload_apk_list`
+    do
+      mv system/app/$apk preload/symlink/system/app/
+    done
+
+    rm -f preload/symlink/system/app/preload_apk_list
+
+    echo
+  fi
+
+
+  cd ..
+  scripts/press_enter
+
+  if [ $num_odex_fr == 0 ] && [ $num_odex_app == 0 ]
+  then
+    exit 0
+  fi
+
+done

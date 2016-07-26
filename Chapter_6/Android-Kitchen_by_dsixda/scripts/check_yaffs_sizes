@@ -1,0 +1,89 @@
+############################################################################
+#
+# Copyright (c) 2011 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+#
+# This script has two optional parameters:
+#
+# $1 = folder where the image is located
+# $2 = image name (e.g. data.img or system.img) - required if $1 defined
+#
+# If not specified, then script assumes system.img in working folder
+#
+
+base_dir=`pwd`
+
+if [ "$1" == "" ]
+then
+  cd WORKING_*
+
+  if [ ! -e system/system.img ]
+  then
+    echo "Error: system.img not found in working folder"
+    cd ..
+    exit 1
+  fi
+
+  cd system
+
+  image_file=system.img 
+
+else
+
+  if [ "$2" == "" ]
+  then
+    echo "Error: Image file not specified"
+    exit 1
+  fi
+
+  cd $1
+  image_file=$2
+  
+fi
+
+#
+# Check for chunk size and then calculate spare size
+#
+
+hex_chunk=`od -x -A x $image_file | grep -m 1 "1000 [ ]*0000 [ ]*0001 [ ]*0000 [ ]*0000 [ ]*0000 [ ]*ffff [ ]*0000" | sed -e 's/ .*//'`
+
+cd $base_dir
+
+if [ "$hex_chunk" != "" ]
+then
+  dec_chunk=`printf "%d" 0x$hex_chunk`
+  echo "Chunk size is $dec_chunk bytes in $image_file"
+
+  # Spare size
+  dec_spare=$(($dec_chunk/32))
+  echo "Spare size calculated to be $dec_spare bytes"
+
+  str=`sed '20q;d' tools/unyaffs_files/unyaffs.c`
+  if [ "$str" != "#define CHUNK_SIZE $dec_chunk" ]
+  then
+    echo "Setting chunk size = $dec_chunk in unyaffs.c, line 20"
+    sed -i -e '20s/.*/#define CHUNK_SIZE '$dec_chunk'/' tools/unyaffs_files/unyaffs.c
+  fi
+
+  str=`sed '21q;d' tools/unyaffs_files/unyaffs.c`
+  if [ "$str" != "#define SPARE_SIZE $dec_spare" ]
+  then
+    echo "Setting spare size = $dec_spare in unyaffs.c, line 21"
+    sed -i -e '21s/.*/#define SPARE_SIZE '$dec_spare'/' tools/unyaffs_files/unyaffs.c
+  fi
+
+  exit 0
+
+else
+  echo "Error: Cannot detect chunk size in $image_file"
+  cd ../..
+  exit 1
+fi
+
+

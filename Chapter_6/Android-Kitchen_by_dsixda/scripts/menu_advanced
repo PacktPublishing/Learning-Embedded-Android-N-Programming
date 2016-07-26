@@ -1,0 +1,66 @@
+############################################################################
+#
+# Copyright (c) 2012 - dsixda (dislam@rocketmail.com)
+#
+# Android Kitchen is 100% free.  This script file is intended for personal
+# and/or educational use only.  It may not be duplicated for monetary
+# benefit or any other purpose without the permission of the developer.
+#
+############################################################################
+
+#!/bin/bash
+ 
+version=$1
+
+while :
+do
+
+  clear
+
+  echo 
+  echo "============================================================"
+  echo " Android Kitchen $version - by dsixda (xda-developers.com)"
+  echo "============================================================"
+  echo
+  echo "> ADVANCED OPTIONS"
+  echo
+  echo " 11 - De-odex files in your ROM"
+  echo " 12 - Tools for boot image (unpack/re-pack/etc.)" 
+  echo " 13 - Add /data/app functionality"
+  echo " 14 - Add /etc/init.d scripts support (busybox run-parts)"
+  echo " 15 - Unpack data.img"
+  echo " 16 - Sign APK or ZIP file(s)" 
+  echo " 17 - Convert update-script or updater-script"
+  echo " 18 - Plugin scripts"
+  echo
+  echo " 99 - Build ROM from working folder"
+  echo "  0 - BACK TO MAIN MENU"
+  echo
+  echo -n "Enter option: "
+  read opt
+
+  if [ "$opt" != "0" ]
+  then
+    scripts/check_multiple_working
+  fi
+
+  if [ "$?" != "1" ]
+  then
+    case $opt in
+      11) scripts/do_deodex; continue;; 
+      12) scripts/boot_img_tools; continue;; 
+      13) scripts/add_data_app show_help;;
+      14) scripts/add_busybox_run_parts show_help;;  
+      15) scripts/unpack_data_img;; 
+      16) scripts/sign_files; continue;;
+      17) scripts/update_script_convert_menu; continue;;
+      18) scripts/run_plugins; continue;;
+      99) scripts/build_rom;;
+      0) exit 1;;
+      *) echo "Invalid option"; continue;;
+    esac
+  fi
+
+  scripts/press_enter
+
+done
