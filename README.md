@@ -14,3 +14,6 @@ This is the code repository for [Learning-Embedded-Android-Programming] (https:/
 * [Android Native Development Kit Cookbook] (https://www.packtpub.com/application-development/android-native-development-kit-cookbook?utm_source=github&utm_medium=repository&utm_campaign=9781849691505)
 * [Android Application Testing Guide] (https://www.packtpub.com/application-development/android-application-testing-guide?utm_source=github&utm_medium=repository&utm_campaign=9781849513500)
 * [Building Android Games with OpenGL ES [Video]] (https://www.packtpub.com/game-development/building-android-games-opengl-es-video?utm_source=github&utm_medium=repository&utm_campaign=9781783286133)
+
+## You will also find a bonus chapter for this book. Please download the chapter from here:
+https://www.packtpub.com/sites/default/files/downloads/MoreaboutAndroidNProgramming.pdf
