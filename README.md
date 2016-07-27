@@ -1,6 +1,6 @@
-# Learning Embedded Android Programming
+# Learning Embedded Android N Programming
 
-This is the code repository for [Learning-Embedded-Android-Programming] (https://www.packtpub.com/application-development/learning-embedded-android-programming?utm_source=github&utm_medium=repository&utm_campaign=9781785282881), published by Packt. It contains all the supporting project files necessary to work through the book from start to finish.
+This is the code repository for [Learning-Embedded-Android-N-Programming] (https://www.packtpub.com/application-development/learning-embedded-android-programming?utm_source=github&utm_medium=repository&utm_campaign=9781785282881), published by Packt. It contains all the supporting project files necessary to work through the book from start to finish.
 
 ## Hardware and Software Requirements
 
