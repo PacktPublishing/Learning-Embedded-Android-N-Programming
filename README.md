@@ -16,3 +16,7 @@ This is the code repository for [Learning-Embedded-Android-N-Programming] (https
 * [Building Android Games with OpenGL ES [Video]] (https://www.packtpub.com/game-development/building-android-games-opengl-es-video?utm_source=github&utm_medium=repository&utm_campaign=9781783286133)
 
 
+### Download a free PDF
+
+ <i>If you have already purchased a print or Kindle version of this book, you can get a DRM-free PDF version at no cost.<br>Simply click on the link to claim your free PDF.</i>
+<p align="center"> <a href="https://packt.link/free-ebook/9781785282881">https://packt.link/free-ebook/9781785282881 </a> </p>
